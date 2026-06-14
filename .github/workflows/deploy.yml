@@ -6,45 +6,62 @@ on:
       - master
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v4.3.1
         with:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore backend/LMS.API/LMS.API.csproj
+        working-directory: backend/LMS.API
+        run: dotnet restore LMS.API.csproj
 
       - name: Build
-        run: dotnet build backend/LMS.API/LMS.API.csproj -c Release --no-restore
+        working-directory: backend/LMS.API
+        run: dotnet build LMS.API.csproj -c Release --no-restore
 
       - name: Publish
-        run: dotnet publish backend/LMS.API/LMS.API.csproj -c Release -o ./publish --no-build
+        working-directory: backend/LMS.API
+        run: dotnet publish LMS.API.csproj -c Release -o ../../publish --no-build
 
-      - name: Copy to Server via SCP
+      - name: Stop API service before copy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: systemctl stop lms-api
+
+      - name: Copy files to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
+          username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           source: "./publish/*"
           target: "/var/www/LMS-API/publish"
           strip_components: 1
+          rm: true
 
-      - name: Restart API Service
+      - name: Start API service
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
+          username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            systemctl restart lms-api
-            sleep 3
+            systemctl start lms-api
+            sleep 5
             systemctl status lms-api --no-pager
+            echo "---"
+            curl -s -o /dev/null -w "API health: %{http_code}" http://localhost:5000/api/health || echo "API started"
