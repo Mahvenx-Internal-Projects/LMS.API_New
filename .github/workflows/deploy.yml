@@ -1,0 +1,65 @@
+name: Deploy LMS API
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4.3.1
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore LMS.API.csproj
+
+      - name: Build
+        run: dotnet build LMS.API.csproj -c Release --no-restore
+
+      - name: Publish
+        run: dotnet publish LMS.API.csproj -c Release -o ./publish --no-build
+
+      - name: Stop API service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: 22
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: systemctl stop lms-api || true
+
+      - name: Copy files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: 22
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "./publish/*"
+          target: "/var/www/LMS-API/publish"
+          strip_components: 1
+          rm: true
+
+      - name: Start API service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: 22
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            systemctl start lms-api
+            sleep 5
+            systemctl status lms-api --no-pager
