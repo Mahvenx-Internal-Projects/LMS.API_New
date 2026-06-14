@@ -12,7 +12,7 @@ runs-on: ubuntu-latest
 
 ```
 steps:
-  - name: Checkout
+  - name: Checkout Source
     uses: actions/checkout@v4
 
   - name: Setup .NET 8
@@ -20,14 +20,17 @@ steps:
     with:
       dotnet-version: '8.0.x'
 
-  - name: Restore
-    run: dotnet restore LMS.API/LMS.API.csproj
+  - name: Restore Packages
+    run: dotnet restore LMS.API.csproj
+
+  - name: Build
+    run: dotnet build LMS.API.csproj -c Release --no-restore
 
   - name: Publish
-    run: dotnet publish LMS.API/LMS.API.csproj -c Release -o publish
+    run: dotnet publish LMS.API.csproj -c Release -o publish --no-build
 
-  - name: Prepare Server Folder
-    uses: appleboy/ssh-action@v1.0.3
+  - name: Prepare Deployment Folder
+    uses: appleboy/ssh-action@v1.2.0
     with:
       host: ${{ secrets.SERVER_HOST }}
       username: ${{ secrets.SERVER_USER }}
@@ -46,8 +49,8 @@ steps:
       source: "publish/*"
       target: "/var/www/LMS-API/publish_new"
 
-  - name: Deploy
-    uses: appleboy/ssh-action@v1.0.3
+  - name: Activate Deployment
+    uses: appleboy/ssh-action@v1.2.0
     with:
       host: ${{ secrets.SERVER_HOST }}
       username: ${{ secrets.SERVER_USER }}
@@ -63,9 +66,9 @@ steps:
 
         sudo cp -R /var/www/LMS-API/publish_new/* /var/www/LMS-API/publish/
 
-        sudo systemctl start lms-api
+        sudo systemctl restart lms-api
 
-        sleep 5
+        sleep 10
 
         sudo systemctl status lms-api --no-pager
 ```
