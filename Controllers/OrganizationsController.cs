@@ -33,7 +33,7 @@ public class OrganizationsController(LmsDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin")]
     public async Task<IActionResult> Create([FromBody] CreateOrganizationRequest req)
     {
         var slug = req.Name.ToLower().Replace(" ", "-");
