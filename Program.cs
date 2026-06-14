@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using LMS.API.Data;
 using LMS.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -20,7 +20,7 @@ Log.Logger = new LoggerConfiguration()
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
 
-// ??? Allow large uploads (2 GB) ???????????????????????????????
+// ─── Allow large uploads (2 GB) ───────────────────────────────
 // Kestrel: remove default 30MB body limit
 builder.Services.Configure<KestrelServerOptions>(opt =>
 {
@@ -35,7 +35,7 @@ builder.Services.Configure<IISServerOptions>(opt =>
     opt.MaxRequestBodySize = 2L * 1024 * 1024 * 1024;
 });
 
-// Form options � allow large multipart bodies
+// Form options — allow large multipart bodies
 builder.Services.Configure<FormOptions>(opt =>
 {
     opt.MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024;
@@ -44,12 +44,12 @@ builder.Services.Configure<FormOptions>(opt =>
     opt.BufferBodyLengthLimit = 2L * 1024 * 1024 * 1024;
 });
 
-// ??? MySQL via Pomelo ??????????????????????????????????????????
+// ─── MySQL via Pomelo ──────────────────────────────────────────
 var conn = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<LmsDbContext>(opt =>
     opt.UseMySql(conn, ServerVersion.AutoDetect(conn)));
 
-// ??? JWT Auth ?????????????????????????????????????????????????
+// ─── JWT Auth ─────────────────────────────────────────────────
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {
