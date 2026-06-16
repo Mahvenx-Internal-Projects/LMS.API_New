@@ -27,12 +27,17 @@ public class LiveClassesController(LmsDbContext db, IEmailService email) : Contr
     }
 
     [HttpGet("upcoming")]
-    public async Task<IActionResult> GetUpcoming([FromQuery] int? orgId, [FromQuery] int? studentId)
+    public async Task<IActionResult> GetUpcoming([FromQuery] int? orgId, [FromQuery] int? studentId, [FromQuery] bool all = false)
     {
         var q = db.LiveClasses
             .Include(l => l.Host)
             .Include(l => l.Course)
-            .Where(l => l.ScheduledAt >= DateTime.UtcNow && l.Status == LiveClassStatus.Scheduled);
+            .AsQueryable();
+
+        // Admin view (all=true): show all batches regardless of date
+        // Student view: show only upcoming scheduled classes
+        if (!all)
+            q = q.Where(l => l.ScheduledAt >= DateTime.UtcNow && l.Status == LiveClassStatus.Scheduled);
 
         if (orgId.HasValue) q = q.Where(l => l.Course.OrganizationId == orgId.Value);
 
@@ -44,7 +49,7 @@ public class LiveClassesController(LmsDbContext db, IEmailService email) : Contr
             q = q.Where(l => enrolledIds.Contains(l.CourseId));
         }
 
-        var list = await q.OrderBy(l => l.ScheduledAt).Take(20).ToListAsync();
+        var list = await q.OrderByDescending(l => l.ScheduledAt).Take(100).ToListAsync();
         return Ok(list.Select(MapClass));
     }
 
