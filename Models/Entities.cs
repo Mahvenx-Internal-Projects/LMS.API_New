@@ -719,3 +719,15 @@ public class InterviewSchedule
     public int OrganizationId { get; set; }
     public Organization Organization { get; set; } = null!;
 }
+
+public class BatchResource
+{
+    public int Id { get; set; }
+    public int LiveClassId { get; set; }
+    public LiveClass LiveClass { get; set; } = null!;
+    [MaxLength(200)] public string Title { get; set; } = "";
+    public string FileUrl { get; set; } = "";
+    [MaxLength(50)] public string FileType { get; set; } = "file"; // video, pdf, file, image
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
