@@ -20,7 +20,7 @@ public static class DbSeeder
             AccentColor = "#06b6d4",
             ThemeFont = "Plus Jakarta Sans",
             Tagline = "Empowering Careers Through Technology Education",
-            PortalUrl = "http://localhost:5173",
+            PortalUrl = "https://scolared.com",
             Currency = "INR",
             IsActive = true
         };

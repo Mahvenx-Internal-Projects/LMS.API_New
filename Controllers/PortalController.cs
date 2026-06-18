@@ -247,8 +247,8 @@ public record PublicCategoryDto(
 public record PublicCourseDto(
     int Id, string Title, string? Description, string? ThumbnailUrl,
     string Level, decimal Price, bool IsFree, int DurationMinutes, string? Language,
-    int InstructorId, string InstructorName, string? InstructorAvatar,
-    int CategoryId, string CategoryName,
+    int? InstructorId, string? InstructorName, string? InstructorAvatar,
+    int? CategoryId, string? CategoryName,
     int EnrollmentCount, double AverageRating, int RatingCount,
     string? Tags, DateTime CreatedAt,
     List<PublicModuleDto>? Modules
