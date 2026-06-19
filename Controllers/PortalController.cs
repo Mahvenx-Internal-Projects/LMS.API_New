@@ -31,12 +31,10 @@ public class PortalController(LmsDbContext db) : ControllerBase
 
         if (isLocalhost)
         {
+            // Return the FULL organization (not a stripped theme DTO) so the
+            // homepage feature flags and content fields are available too.
             var devOrg = await db.Organizations
                 .Where(o => o.IsActive)
-                .Select(o => new OrgThemeDto(
-                    o.Id, o.Name, o.Slug, o.LogoUrl, o.BannerUrl, o.Tagline,
-                    o.PrimaryColor, o.SecondaryColor, o.AccentColor,
-                    o.ThemeFont, o.Website, o.PortalUrl))
                 .FirstOrDefaultAsync();
 
             if (devOrg is null)
@@ -52,10 +50,6 @@ public class PortalController(LmsDbContext db) : ControllerBase
             .Where(o => o.IsActive &&
                         o.PortalUrl != null &&
                         o.PortalUrl.ToLower().TrimEnd('/') == normalised)
-            .Select(o => new OrgThemeDto(
-                o.Id, o.Name, o.Slug, o.LogoUrl, o.BannerUrl, o.Tagline,
-                o.PrimaryColor, o.SecondaryColor, o.AccentColor,
-                o.ThemeFont, o.Website, o.PortalUrl))
             .FirstOrDefaultAsync();
 
         if (org is null)
