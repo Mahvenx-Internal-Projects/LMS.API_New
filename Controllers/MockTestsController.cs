@@ -10,15 +10,42 @@ namespace LMS.API.Controllers;
 [ApiController, Route("api/mocktests"), Authorize]
 public class MockTestsController(LmsDbContext db) : ControllerBase
 {
+    // ════════════════════════════════════════════════════════════════════════════
+    // PATCH for MockTestsController.cs — replace the existing GetAll method
+    // with this version. Fixes: newly created (Draft) mock tests were invisible
+    // to everyone, including the Admin/Instructor who created them, because the
+    // default filter only showed Status == Published.
+    //
+    // New behavior:
+    //   - Students: only ever see Published tests (unchanged)
+    //   - Admin/Instructor/SuperAdmin: see ALL statuses by default (Draft +
+    //     Published + Archived), so newly created tests appear immediately
+    //     with a visible "Publish" button. They can still filter by status
+    //     explicitly via the query param if needed.
+    // ════════════════════════════════════════════════════════════════════════════
+
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] int? orgId, [FromQuery] int? courseId, [FromQuery] string? status)
     {
         var q = db.MockTests.Include(m => m.CreatedBy).Include(m => m.Course).AsQueryable();
-        if (orgId.HasValue)    q = q.Where(m => m.OrganizationId == orgId.Value);
+        if (orgId.HasValue) q = q.Where(m => m.OrganizationId == orgId.Value);
         if (courseId.HasValue) q = q.Where(m => m.CourseId == courseId.Value);
-        q = !string.IsNullOrEmpty(status) && Enum.TryParse<MockTestStatus>(status, out var st)
-            ? q.Where(m => m.Status == st)
-            : q.Where(m => m.Status == MockTestStatus.Published);
+
+        var isStaff = User.IsInRole("SuperAdmin") || User.IsInRole("OrgAdmin") || User.IsInRole("Instructor");
+
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<MockTestStatus>(status, out var st))
+        {
+            // Explicit status filter requested — honor it for everyone
+            q = q.Where(m => m.Status == st);
+        }
+        else if (!isStaff)
+        {
+            // Students with no explicit filter: Published only
+            q = q.Where(m => m.Status == MockTestStatus.Published);
+        }
+        // else: staff with no explicit filter sees ALL statuses (Draft included)
+        // so newly created tests are immediately visible.
+
         var list = await q.Include(m => m.Attempts).OrderByDescending(m => m.CreatedAt).ToListAsync();
         return Ok(list.Select(m => MapTest(m, false)));
     }
