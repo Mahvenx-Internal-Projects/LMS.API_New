@@ -397,7 +397,7 @@ public class TopicScore
 
 // ─── ASSIGNMENT ───────────────────────────────────────────────────────────────
 public enum AssignmentStatus { Draft, Published, Closed }
-public enum SubmissionStatus { Submitted, Late, Graded, Rejected }
+public enum SubmissionStatus { NotSubmitted, Submitted, Late, Graded, Rejected, ResubmitRequested }
 
 public class Assignment
 {

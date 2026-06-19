@@ -27,6 +27,9 @@ public class AssignmentsController(LmsDbContext db, IEmailService email) : Contr
     }
 
     // ─── Student: my assignments ───────────────────────────────
+    // Returns each assignment with the STUDENT'S OWN submission state
+    // (myStatus / myMarks / myFeedback) — separate from the assignment's
+    // own publish status (Draft/Published/Closed).
     [HttpGet("student/{studentId}")]
     public async Task<IActionResult> GetForStudent(int studentId)
     {
@@ -63,10 +66,14 @@ public class AssignmentsController(LmsDbContext db, IEmailService email) : Contr
     {
         var a = new Assignment
         {
-            Title       = req.Title, Description = req.Description,
-            AttachmentUrl = req.AttachmentUrl, MaxMarks = req.MaxMarks,
-            DueDate     = req.DueDate, CourseId = req.CourseId,
-            CreatedById = req.CreatedById, Status = AssignmentStatus.Published
+            Title = req.Title,
+            Description = req.Description,
+            AttachmentUrl = req.AttachmentUrl,
+            MaxMarks = req.MaxMarks,
+            DueDate = req.DueDate,
+            CourseId = req.CourseId,
+            CreatedById = req.CreatedById,
+            Status = AssignmentStatus.Published
         };
         db.Assignments.Add(a);
         await db.SaveChangesAsync();
@@ -107,32 +114,68 @@ public class AssignmentsController(LmsDbContext db, IEmailService email) : Contr
         return NoContent();
     }
 
-    // ─── Student: submit assignment ────────────────────────────
+    // ─── Student: submit (or resubmit) assignment ──────────────
+    // Allows resubmission when the existing submission status is
+    // ResubmitRequested — otherwise blocks duplicate submissions.
     [HttpPost("submit")]
     public async Task<IActionResult> Submit([FromBody] SubmitAssignmentRequest req)
     {
         var existing = await db.AssignmentSubmissions
             .FirstOrDefaultAsync(s => s.AssignmentId == req.AssignmentId && s.StudentId == req.StudentId);
-        if (existing is not null) return BadRequest(new { message = "Already submitted" });
 
-        var assignment = await db.Assignments.FindAsync(req.AssignmentId);
-        var isLate = assignment is not null && DateTime.UtcNow > assignment.DueDate;
+        var assignment = await db.Assignments.Include(a => a.Course)
+            .FirstOrDefaultAsync(a => a.Id == req.AssignmentId);
+        if (assignment is null) return NotFound();
+        var isLate = DateTime.UtcNow > assignment.DueDate;
+
+        if (existing is not null)
+        {
+            // Only allow resubmission if instructor explicitly requested it
+            if (existing.Status != SubmissionStatus.ResubmitRequested)
+                return BadRequest(new { message = "Already submitted" });
+
+            existing.SubmissionText = req.SubmissionText;
+            existing.FileUrl = req.FileUrl;
+            existing.SubmittedAt = DateTime.UtcNow;
+            existing.Status = isLate ? SubmissionStatus.Late : SubmissionStatus.Submitted;
+            existing.MarksObtained = null;   // clear previous grade on resubmission
+            existing.Feedback = null;
+            existing.GradedAt = null;
+            existing.GradedById = null;
+            await db.SaveChangesAsync();
+            return Ok(new { existing.Id, existing.Status, resubmitted = true });
+        }
 
         var sub = new AssignmentSubmission
         {
-            AssignmentId   = req.AssignmentId,
-            StudentId      = req.StudentId,
+            AssignmentId = req.AssignmentId,
+            StudentId = req.StudentId,
             SubmissionText = req.SubmissionText,
-            FileUrl        = req.FileUrl,
-            SubmittedAt    = DateTime.UtcNow,
-            Status         = isLate ? SubmissionStatus.Late : SubmissionStatus.Submitted
+            FileUrl = req.FileUrl,
+            SubmittedAt = DateTime.UtcNow,
+            Status = isLate ? SubmissionStatus.Late : SubmissionStatus.Submitted
         };
         db.AssignmentSubmissions.Add(sub);
         await db.SaveChangesAsync();
+
+        // Notify instructor of new submission (best-effort, non-blocking)
+        try
+        {
+            var instructor = await db.Users.FindAsync(assignment.CreatedById);
+            var student = await db.Users.FindAsync(req.StudentId);
+            if (instructor is not null && student is not null)
+                _ = email.SendAssignmentNotificationAsync(instructor.Email, instructor.FirstName,
+                    $"New submission: {assignment.Title} from {student.FirstName} {student.LastName}",
+                    assignment.DueDate, assignment.Course.Title);
+        }
+        catch { /* email is non-critical */ }
+
         return Ok(new { sub.Id, sub.Status });
     }
 
-    // ─── Trainer: grade submission ─────────────────────────────
+    // ─── Trainer: grade submission OR request resubmission ─────
+    // If req.MarksObtained is null and req.Status == "ResubmitRequested",
+    // this sends the student feedback WITHOUT a grade and unlocks resubmission.
     [HttpPost("grade")]
     [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
     public async Task<IActionResult> Grade([FromBody] GradeSubmissionRequest req)
@@ -143,21 +186,45 @@ public class AssignmentsController(LmsDbContext db, IEmailService email) : Contr
             .FirstOrDefaultAsync(s => s.Id == req.SubmissionId);
         if (sub is null) return NotFound();
 
-        sub.MarksObtained = req.MarksObtained;
-        sub.Feedback      = req.Feedback;
-        sub.GradedById    = req.GradedById;
-        sub.GradedAt      = DateTime.UtcNow;
-        sub.Status        = SubmissionStatus.Graded;
+        var requestingResubmit = string.Equals(req.Status, "ResubmitRequested", StringComparison.OrdinalIgnoreCase);
+
+        sub.Feedback = req.Feedback;
+        sub.GradedById = req.GradedById;
+        sub.GradedAt = DateTime.UtcNow;
+
+        if (requestingResubmit)
+        {
+            sub.Status = SubmissionStatus.ResubmitRequested;
+            sub.MarksObtained = null;   // no grade yet — student must resubmit
+        }
+        else
+        {
+            sub.MarksObtained = req.MarksObtained ?? 0;
+            sub.Status = SubmissionStatus.Graded;
+        }
+
         await db.SaveChangesAsync();
 
-        // Notify student
-        _ = email.SendGradeNotificationAsync(
-            sub.Student.Email, sub.Student.FirstName,
-            sub.Assignment.Title, req.MarksObtained,
-            sub.Assignment.MaxMarks, req.Feedback ?? "",
-            sub.Assignment.Course.Title
-        );
-        return Ok(new { sub.MarksObtained, sub.Feedback });
+        // Notify student (best-effort, non-blocking)
+        try
+        {
+            if (requestingResubmit)
+                _ = email.SendAssignmentNotificationAsync(
+                    sub.Student.Email, sub.Student.FirstName,
+                    $"Resubmission requested: {sub.Assignment.Title} — {req.Feedback}",
+                    sub.Assignment.DueDate, sub.Assignment.Course.Title
+                );
+            else
+                _ = email.SendGradeNotificationAsync(
+                    sub.Student.Email, sub.Student.FirstName,
+                    sub.Assignment.Title, sub.MarksObtained ?? 0,
+                    sub.Assignment.MaxMarks, req.Feedback ?? "",
+                    sub.Assignment.Course.Title
+                );
+        }
+        catch { /* email is non-critical */ }
+
+        return Ok(new { sub.MarksObtained, sub.Feedback, sub.Status });
     }
 
     // ─── Trainer: all submissions for an assignment ────────────
@@ -178,8 +245,12 @@ public class AssignmentsController(LmsDbContext db, IEmailService email) : Contr
         a.Id, a.Title, a.Description, a.AttachmentUrl, a.MaxMarks, a.DueDate,
         a.Status.ToString(), a.CourseId, a.Course.Title,
         a.CreatedById, $"{a.CreatedBy.FirstName} {a.CreatedBy.LastName}",
-        a.CreatedAt, a.Submissions.Count,
-        sub?.MarksObtained, sub?.Status.ToString()
+        a.CreatedAt,
+        a.Submissions.Count,
+        a.Submissions.Count(s => s.Status == SubmissionStatus.Graded),
+        sub?.MarksObtained,
+        sub?.Status.ToString() ?? "NotSubmitted",
+        sub?.Feedback
     );
 
     static SubmissionDto MapSub(AssignmentSubmission s) => new(

@@ -630,5 +630,265 @@ public static class DbSeeder
         };
         db.MockTestOptions.AddRange(opts);
         await db.SaveChangesAsync();
+
+        // ════════════════════════════════════════════════════════════════════════════
+        // SEED DATA — Training Batches, Live Classes, Assignment Submissions
+        // Paste this block inside DbSeeder.cs, after courses/users/enrollments are
+        // already seeded (it needs CourseId, OrganizationId, and student UserIds).
+        // ════════════════════════════════════════════════════════════════════════════
+
+        if (!db.TrainingBatches.Any())
+        {
+            var org1 = db.Organizations.First();
+            var admin = db.Users.First(u => u.Role == UserRole.OrgAdmin || u.Role == UserRole.SuperAdmin);
+            var course = db.Courses.FirstOrDefault(c => c.OrganizationId == org1.Id);
+            var students1 = db.Users.Where(u => u.Role == UserRole.Student && u.OrganizationId == org1.Id).Take(5).ToList();
+
+            // ── Training Batches ───────────────────────────────────────────────
+            var batch1 = new TrainingBatch
+            {
+                BatchName = "Full Stack Development — Batch 7",
+                Description = "Evening batch covering React, .NET, and MySQL",
+                StartDate = DateTime.UtcNow.AddDays(-10),       // already started → Active
+                DurationDays = 60,
+                TotalFee = 25000,
+                Notes = "Includes live project + certification",
+                OrganizationId = org.Id,
+                CourseId = course?.Id,
+                CreatedById = admin.Id,
+                Status = BatchStatus.Active,
+            };
+
+            var batch2 = new TrainingBatch
+            {
+                BatchName = "Data Analytics Bootcamp — Batch 3",
+                Description = "Weekend batch — Excel, SQL, Power BI",
+                StartDate = DateTime.UtcNow.AddDays(7),          // starts next week → Upcoming
+                DurationDays = 45,
+                TotalFee = 18000,
+                Notes = "Beginner friendly, no prior experience needed",
+                OrganizationId = org.Id,
+                CourseId = course?.Id,
+                CreatedById = admin.Id,
+                Status = BatchStatus.Upcoming,
+            };
+
+            var batch3 = new TrainingBatch
+            {
+                BatchName = "UI/UX Design Sprint — Batch 1",
+                Description = "Free intro batch on Figma & design thinking",
+                StartDate = DateTime.UtcNow.AddDays(-45),
+                DurationDays = 30,                                  // ended → Completed
+                TotalFee = 0,
+                OrganizationId = org.Id,
+                CourseId = course?.Id,
+                CreatedById = admin.Id,
+                Status = BatchStatus.Completed,
+            };
+
+            db.TrainingBatches.AddRange(batch1, batch2, batch3);
+            db.SaveChanges();
+
+            // ── Batch students (mix of existing users + guests) ────────────────
+            var batchStudents = new List<BatchStudent>();
+            for (int i = 0; i < students1.Count; i++)
+            {
+                var paid = i % 3 == 0 ? 25000 : i % 3 == 1 ? 12000 : 0;
+                batchStudents.Add(new BatchStudent
+                {
+                    BatchId = batch1.Id,
+                    UserId = students[i].Id,
+                    TotalFee = 25000,
+                    PaidAmount = paid,
+                    PaymentStatus = paid >= 25000 ? PaymentStatus.FullyPaid
+                                   : paid > 0 ? PaymentStatus.PartiallyPaid
+                                   : PaymentStatus.Pending,
+                    Status = BatchStudentStatus.Active,
+                    JoinedAt = batch1.StartDate.AddDays(-1),
+                });
+            }
+            // Guest students (no account) for batch2
+            batchStudents.Add(new BatchStudent
+            {
+                BatchId = batch2.Id,
+                GuestName = "Priya Sharma",
+                GuestEmail = "priya.sharma@example.com",
+                GuestMobile = "9876543210",
+                TotalFee = 18000,
+                PaidAmount = 9000,
+                PaymentStatus = PaymentStatus.PartiallyPaid,
+                Status = BatchStudentStatus.Active,
+            });
+            batchStudents.Add(new BatchStudent
+            {
+                BatchId = batch2.Id,
+                GuestName = "Rahul Verma",
+                GuestEmail = "rahul.verma@example.com",
+                GuestMobile = "9876501234",
+                TotalFee = 18000,
+                PaidAmount = 0,
+                PaymentStatus = PaymentStatus.Pending,
+                Status = BatchStudentStatus.Active,
+            });
+            db.BatchStudents.AddRange(batchStudents);
+            db.SaveChanges();
+
+            // ── Live Classes (Zoom/Meet sessions) ───────────────────────────────
+            if (course is not null)
+            {
+                var liveClasses = new List<LiveClass>
+        {
+            new() {
+                Title = "Live Q&A — React Hooks Deep Dive",
+                Description = "Open doubt-clearing session on useEffect, useMemo, custom hooks",
+                ScheduledAt = DateTime.UtcNow.AddDays(2).Date.AddHours(19),
+                DurationMinutes = 60,
+                Platform = LiveClassPlatform.Zoom,
+                MeetingLink = "https://zoom.us/j/1234567890",
+                MeetingId = "123 456 7890",
+                MeetingPassword = "eksha123",
+                CourseId = course.Id,
+                HostId = admin.Id,
+                Status = LiveClassStatus.Scheduled,
+            },
+            new() {
+                Title = "Live Coding — Building a REST API with .NET 8",
+                Description = "Hands-on walkthrough building CRUD endpoints from scratch",
+                ScheduledAt = DateTime.UtcNow.AddDays(5).Date.AddHours(18),
+                DurationMinutes = 90,
+                Platform = LiveClassPlatform.GoogleMeet,
+                MeetingLink = "https://meet.google.com/abc-defg-hij",
+                CourseId = course.Id,
+                HostId = admin.Id,
+                Status = LiveClassStatus.Scheduled,
+            },
+            new() {
+                Title = "Recorded Session — Intro to MySQL",
+                Description = "Past session, recording available",
+                ScheduledAt = DateTime.UtcNow.AddDays(-7),
+                DurationMinutes = 75,
+                Platform = LiveClassPlatform.Zoom,
+                RecordingUrl = "https://example.com/recordings/mysql-intro.mp4",
+                CourseId = course.Id,
+                HostId = admin.Id,
+                Status = LiveClassStatus.Completed,
+                EmailSent = true,
+            },
+        };
+                db.LiveClasses.AddRange(liveClasses);
+                db.SaveChanges();
+
+                // Auto-add enrolled students as attendees for the upcoming sessions
+                foreach (var lc in liveClasses.Where(l => l.Status == LiveClassStatus.Scheduled))
+                    foreach (var s in students)
+                        db.LiveClassAttendees.Add(new LiveClassAttendee { LiveClassId = lc.Id, UserId = s.Id });
+                db.SaveChanges();
+            }
+
+            Console.WriteLine($"Seeded {db.TrainingBatches.Count()} training batches, " +
+                               $"{db.BatchStudents.Count()} batch students, " +
+                               $"{db.LiveClasses.Count()} live classes.");
+        }
+
+        // ════════════════════════════════════════════════════════════════════════════
+        // SEED — Assignment + submissions in various states (for testing the
+        // submit → grade → request-resubmit → resubmit flow end-to-end)
+        // ════════════════════════════════════════════════════════════════════════════
+
+        if (!db.Assignments.Any())
+        {
+            var org2 = db.Organizations.First();
+            var admin = db.Users.First(u => u.Role == UserRole.OrgAdmin || u.Role == UserRole.SuperAdmin || u.Role == UserRole.Instructor);
+            var course = db.Courses.FirstOrDefault(c => c.OrganizationId == org2.Id);
+            var students2 = db.Users.Where(u => u.Role == UserRole.Student && u.OrganizationId == org2.Id).Take(4).ToList();
+
+            if (course is not null && students2.Count >= 4)
+            {
+                var assignment1 = new Assignment
+                {
+                    Title = "Module 1 Exercise — Variables & Loops",
+                    Description = "Write 5 small programs demonstrating for/while loops and variable scope. Submit your code as a GitHub gist or Drive link.",
+                    MaxMarks = 100,
+                    DueDate = DateTime.UtcNow.AddDays(5),
+                    CourseId = course.Id,
+                    CreatedById = admin.Id,
+                    Status = AssignmentStatus.Published,
+                };
+
+                var assignment2 = new Assignment
+                {
+                    Title = "Final Project — Build a Mini CRUD App",
+                    Description = "Build a small full-stack app (any stack) with Create, Read, Update, Delete on one resource. Include a README.",
+                    MaxMarks = 100,
+                    DueDate = DateTime.UtcNow.AddDays(-2),     // overdue — for testing 'Late' status
+                    CourseId = course.Id,
+                    CreatedById = admin.Id,
+                    Status = AssignmentStatus.Published,
+                };
+
+                db.Assignments.AddRange(assignment1, assignment2);
+                db.SaveChanges();
+
+                // ── Submission states across the 4 students ─────────────────────
+                // Student[0]: Not submitted yet (NotSubmitted — no row at all)
+                // Student[1]: Submitted, awaiting grading
+                var sub1 = new AssignmentSubmission
+                {
+                    AssignmentId = assignment1.Id,
+                    StudentId = students[1].Id,
+                    SubmissionText = "Completed all 5 exercises, link to gist below.",
+                    FileUrl = "https://gist.github.com/example/loops-exercise",
+                    SubmittedAt = DateTime.UtcNow.AddDays(-1),
+                    Status = SubmissionStatus.Submitted,
+                };
+
+                // Student[2]: Graded with feedback
+                var sub2 = new AssignmentSubmission
+                {
+                    AssignmentId = assignment1.Id,
+                    StudentId = students[2].Id,
+                    SubmissionText = "All exercises done, added bonus recursion example.",
+                    FileUrl = "https://github.com/example/student2-loops",
+                    SubmittedAt = DateTime.UtcNow.AddDays(-3),
+                    Status = SubmissionStatus.Graded,
+                    MarksObtained = 92,
+                    Feedback = "Excellent work! Clean code and the bonus recursion example was a nice touch.",
+                    GradedById = admin.Id,
+                    GradedAt = DateTime.UtcNow.AddDays(-2),
+                };
+
+                // Student[3]: Resubmission requested (no grade yet, needs to fix and resubmit)
+                var sub3 = new AssignmentSubmission
+                {
+                    AssignmentId = assignment1.Id,
+                    StudentId = students[3].Id,
+                    SubmissionText = "Submitted 3 out of 5 exercises.",
+                    FileUrl = "https://github.com/example/student3-incomplete",
+                    SubmittedAt = DateTime.UtcNow.AddDays(-4),
+                    Status = SubmissionStatus.ResubmitRequested,
+                    Feedback = "You're missing exercises 4 and 5. Please complete them and resubmit.",
+                    GradedById = admin.Id,
+                    GradedAt = DateTime.UtcNow.AddDays(-3),
+                };
+
+                // Second assignment: one late submission
+                var sub4 = new AssignmentSubmission
+                {
+                    AssignmentId = assignment2.Id,
+                    StudentId = students[1].Id,
+                    SubmissionText = "Built a simple Todo CRUD app using React + Express.",
+                    FileUrl = "https://github.com/example/todo-crud",
+                    SubmittedAt = DateTime.UtcNow.AddDays(-1),    // after due date → Late
+                    Status = SubmissionStatus.Late,
+                };
+
+                db.AssignmentSubmissions.AddRange(sub1, sub2, sub3, sub4);
+                db.SaveChanges();
+
+                Console.WriteLine($"Seeded 2 assignments with 4 submissions in mixed states " +
+                                   "(NotSubmitted, Submitted, Graded, ResubmitRequested, Late).");
+            }
+        }
     }
+
 }

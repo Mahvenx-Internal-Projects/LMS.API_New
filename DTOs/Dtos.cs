@@ -153,10 +153,10 @@ public record SaveHomePageConfigRequest(
 );
 
 // ─── ASSIGNMENTS ───────────────────────────────────────────────────────────────
-public record AssignmentDto(int Id, string Title, string? Description, string? AttachmentUrl, int MaxMarks, DateTime DueDate, string Status, int CourseId, string CourseTitle, int CreatedById, string CreatedByName, DateTime CreatedAt, int SubmissionCount, int? MyMarks, string? MyStatus);
+public record AssignmentDto(int Id, string Title, string? Description, string? AttachmentUrl, int MaxMarks, DateTime DueDate, string Status, int CourseId, string CourseTitle, int CreatedById, string CreatedByName, DateTime CreatedAt, int SubmissionCount, int GradedCount, int? MyMarks, string? MyStatus, string? MyFeedback);
 public record CreateAssignmentRequest(string Title, string? Description, string? AttachmentUrl, int MaxMarks, DateTime DueDate, int CourseId, int CreatedById);
 public record SubmitAssignmentRequest(int AssignmentId, int StudentId, string? SubmissionText, string? FileUrl);
-public record GradeSubmissionRequest(int SubmissionId, int MarksObtained, string? Feedback, int GradedById);
+public record GradeSubmissionRequest(int SubmissionId, int? MarksObtained, string? Feedback, int GradedById, string? Status = null);
 public record SubmissionDto(int Id, int AssignmentId, string AssignmentTitle, int StudentId, string StudentName, string? SubmissionText, string? FileUrl, int? MarksObtained, string? Feedback, string Status, DateTime? SubmittedAt, DateTime? GradedAt);
 
 // ─── ATTENDANCE ────────────────────────────────────────────────────────────────
