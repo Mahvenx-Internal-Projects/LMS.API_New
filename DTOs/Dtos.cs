@@ -12,7 +12,18 @@ public record OrganizationDto(
     int Id, string Name, string Slug, string? LogoUrl, string? BannerUrl, string? Tagline,
     string? PrimaryColor, string? SecondaryColor, string? AccentColor,
     string? ThemeFont, string? Website, string? PortalUrl,
-    bool IsActive, DateTime CreatedAt, int UserCount, int CourseCount
+    bool IsActive, DateTime CreatedAt, int UserCount, int CourseCount,
+    // Homepage feature flags
+    bool ShowScrollingBanner = false, string? ScrollingBannerText = null,
+    bool ShowReferralOffer = false, string? ReferralOfferText = null,
+    bool ShowCourseBatches = false, bool ShowAllCourses = true,
+    bool ShowContactUs = true, bool ShowAboutUs = true,
+    bool ShowOpenings = false,
+    // Content
+    string? AboutUsContent = null, string? ContactEmail = null,
+    string? ContactPhone = null, string? ContactAddress = null,
+    string? ContactMapEmbed = null, string? OpeningsContent = null,
+    string? CustomMenuJson = null
 );
 public record CreateOrganizationRequest(string Name, string? Website, string? PrimaryColor, string? PortalUrl);
 public record UpdateOrganizationRequest(
