@@ -17,13 +17,13 @@ public class DashboardController(LmsDbContext db) : ControllerBase
     [Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> SuperAdminDashboard()
     {
-        var totalOrgs        = await db.Organizations.CountAsync();
-        var activeOrgs       = await db.Organizations.CountAsync(o => o.IsActive);
-        var totalUsers       = await db.Users.CountAsync();
-        var totalStudents    = await db.Users.CountAsync(u => u.Role == UserRole.Student);
-        var totalCourses     = await db.Courses.CountAsync();
+        var totalOrgs = await db.Organizations.CountAsync();
+        var activeOrgs = await db.Organizations.CountAsync(o => o.IsActive);
+        var totalUsers = await db.Users.CountAsync();
+        var totalStudents = await db.Users.CountAsync(u => u.Role == UserRole.Student);
+        var totalCourses = await db.Courses.CountAsync();
         var totalEnrollments = await db.Enrollments.CountAsync();
-        var totalRevenue     = await db.OrderItems
+        var totalRevenue = await db.OrderItems
             .Where(oi => oi.Order.Status == OrderStatus.Paid)
             .SumAsync(oi => oi.Price);
 
@@ -34,7 +34,11 @@ public class DashboardController(LmsDbContext db) : ControllerBase
             .OrderByDescending(u => u.CreatedAt)
             .Take(10)
             .Select(u => new {
-                u.Id, u.FirstName, u.LastName, u.Email, u.CreatedAt,
+                u.Id,
+                u.FirstName,
+                u.LastName,
+                u.Email,
+                u.CreatedAt,
                 organizationName = u.Organization.Name,
                 organizationId = u.OrganizationId,
             })
@@ -46,7 +50,10 @@ public class DashboardController(LmsDbContext db) : ControllerBase
             .OrderByDescending(c => c.CreatedAt)
             .Take(10)
             .Select(c => new {
-                c.Id, c.Title, c.CreatedAt, c.EnrollmentCount,
+                c.Id,
+                c.Title,
+                c.CreatedAt,
+                c.EnrollmentCount,
                 organizationName = c.Organization.Name,
                 organizationId = c.OrganizationId,
             })
@@ -59,10 +66,10 @@ public class DashboardController(LmsDbContext db) : ControllerBase
                 o.Name,
                 o.LogoUrl,
                 o.PrimaryColor,
-                studentCount     = db.Users.Count(u => u.OrganizationId == o.Id && u.Role == UserRole.Student),
-                courseCount      = db.Courses.Count(c => c.OrganizationId == o.Id),
-                enrollmentCount  = db.Enrollments.Count(e => e.Course.OrganizationId == o.Id),
-                revenue          = db.OrderItems
+                studentCount = db.Users.Count(u => u.OrganizationId == o.Id && u.Role == UserRole.Student),
+                courseCount = db.Courses.Count(c => c.OrganizationId == o.Id),
+                enrollmentCount = db.Enrollments.Count(e => e.Course.OrganizationId == o.Id),
+                revenue = db.OrderItems
                     .Where(oi => oi.Course.OrganizationId == o.Id && oi.Order.Status == OrderStatus.Paid)
                     .Sum(oi => (decimal?)oi.Price) ?? 0,
             })
@@ -202,24 +209,34 @@ public class DashboardController(LmsDbContext db) : ControllerBase
     [HttpGet("student/{userId}")]
     public async Task<IActionResult> StudentDashboard(int userId)
     {
-        var totalWatch = await db.LessonProgresses
+        var totalWatchSecs = await db.LessonProgresses
             .Where(p => p.UserId == userId)
             .SumAsync(p => p.WatchedSeconds);
 
-        // Last 7 days daily watch time
+        // Last 7 days daily watch time — keep raw seconds per day, not
+        // pre-truncated to minutes. Summing whole-minute values per lesson
+        // (e.g. 25s + 6s = 31s) used to floor-divide to 0 here, which made
+        // any session under a minute invisible on the dashboard even though
+        // it was correctly saved. The frontend now decides how to format
+        // (show "31s" under a minute, "Xm" once it crosses 60s).
         var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
         var dailyWatch = await db.LessonProgresses
             .Where(p => p.UserId == userId && p.UpdatedAt >= sevenDaysAgo)
             .GroupBy(p => p.UpdatedAt.Date)
-            .Select(g => new { Date = g.Key, Minutes = g.Sum(p => p.WatchedSeconds) / 60 })
+            .Select(g => new { Date = g.Key, Seconds = g.Sum(p => p.WatchedSeconds) })
             .OrderBy(x => x.Date)
             .ToListAsync();
 
         var weekActivity = Enumerable.Range(0, 7)
             .Select(i => DateTime.UtcNow.AddDays(-6 + i).Date)
-            .Select(d => new {
-                label = d.ToString("ddd"),
-                minutes = dailyWatch.FirstOrDefault(x => x.Date == d)?.Minutes ?? 0
+            .Select(d => {
+                var secs = dailyWatch.FirstOrDefault(x => x.Date == d)?.Seconds ?? 0;
+                return new
+                {
+                    label = d.ToString("ddd"),
+                    seconds = secs,
+                    minutes = secs / 60, // kept for backward compatibility with existing chart code
+                };
             }).ToList();
 
         return Ok(new
@@ -227,7 +244,8 @@ public class DashboardController(LmsDbContext db) : ControllerBase
             enrolledCourses = await db.Enrollments.CountAsync(e => e.UserId == userId),
             completedCourses = await db.Enrollments.CountAsync(e => e.UserId == userId && e.Status == EnrollmentStatus.Completed),
             certificatesEarned = await db.Certificates.CountAsync(c => c.UserId == userId),
-            totalWatchMinutes = totalWatch / 60,
+            totalWatchSeconds = totalWatchSecs,
+            totalWatchMinutes = totalWatchSecs / 60, // kept for backward compatibility
             weekActivity,
             activeEnrollments = await db.Enrollments
                 .Include(e => e.User)
@@ -237,7 +255,7 @@ public class DashboardController(LmsDbContext db) : ControllerBase
                 .Select(e => new EnrollmentDto(
                     e.Id, e.UserId, $"{e.User.FirstName} {e.User.LastName}",
                     e.CourseId, e.Course.Title, e.EnrolledAt, e.CompletedAt,
-                    e.Status.ToString(), e.ProgressPercent
+                    e.Status.ToString(), e.ProgressPercent, e.TotalWatchSeconds
                 ))
                 .Take(5)
                 .ToListAsync()

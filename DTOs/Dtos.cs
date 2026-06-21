@@ -86,7 +86,7 @@ public record LessonProgressDto(int LessonId, bool IsCompleted, int WatchedSecon
 public record UpdateProgressRequest(int LessonId, int WatchedSeconds, int LastPositionSec, bool IsCompleted);
 
 // ─── ENROLLMENT ────────────────────────────────────────────────────────────────
-public record EnrollmentDto(int Id, int UserId, string UserName, int CourseId, string CourseTitle, DateTime EnrolledAt, DateTime? CompletedAt, string Status, int ProgressPercent);
+public record EnrollmentDto(int Id, int UserId, string UserName, int CourseId, string CourseTitle, DateTime EnrolledAt, DateTime? CompletedAt, string Status, int ProgressPercent, int TotalWatchSeconds = 0);
 public record EnrollRequest(int UserId, int CourseId);
 
 // ─── EXAM ──────────────────────────────────────────────────────────────────────
