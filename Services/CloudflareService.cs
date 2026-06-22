@@ -10,6 +10,12 @@ public interface ICloudflareService
     Task<UploadResult> UploadImageAsync(IFormFile file, string folder);
     Task<UploadResult> UploadVideoAsync(IFormFile file, string folder);
     Task<UploadResult> UploadFileAsync(IFormFile file, string folder);
+    // Streams directly from a raw request body (no IFormFile/multipart
+    // parsing involved) — used for large video uploads where the browser
+    // sends the file as the raw POST body instead of wrapping it in
+    // FormData. Avoids the browser needing to fully read/buffer a large
+    // File object before any bytes can start transmitting.
+    Task<UploadResult> UploadVideoStreamAsync(Stream stream, long length, string fileName, string contentType, string folder);
     Task<bool> DeleteFileAsync(string fileKey);
     string GetPublicUrl(string fileKey);
 }
@@ -69,6 +75,73 @@ public class CloudflareService(IConfiguration config, ILogger<CloudflareService>
     public Task<UploadResult> UploadFileAsync(IFormFile file, string folder)
         => UploadAsync(file, folder);
 
+    // Raw-stream upload for large videos sent as the literal POST body
+    // (not multipart/FormData). Reuses the same multipart-to-R2 logic as
+    // UploadAsync below, just driven by a Stream + explicit length/name
+    // instead of an IFormFile.
+    public async Task<UploadResult> UploadVideoStreamAsync(Stream stream, long length, string fileName, string contentType, string folder)
+    {
+        var ext = Path.GetExtension(fileName).ToLower();
+        if (!VideoExts.Contains(ext))
+            return new UploadResult(false, "", "", $"Invalid video type: {ext}");
+
+        var key = $"{folder.TrimEnd('/')}/{Guid.NewGuid():N}{ext}";
+
+        try
+        {
+            using var client = CreateClient();
+
+            logger.LogInformation("Starting raw-stream multipart upload for {Name} ({SizeMB:F1}MB)",
+                fileName, length / 1024.0 / 1024.0);
+
+            var transfer = new TransferUtility(client, new TransferUtilityConfig
+            {
+                ConcurrentServiceRequests = 8,
+            });
+
+            var uploadReq = new TransferUtilityUploadRequest
+            {
+                BucketName = _bucket,
+                Key = key,
+                ContentType = contentType ?? "application/octet-stream",
+                CannedACL = S3CannedACL.PublicRead,
+                InputStream = stream,
+                PartSize = 10 * 1024 * 1024,
+                AutoCloseStream = false,
+                DisablePayloadSigning = true,
+            };
+
+            var lastLoggedPct = -10;
+            uploadReq.UploadProgressEvent += (_, e) =>
+            {
+                if (e.PercentDone - lastLoggedPct >= 10)
+                {
+                    lastLoggedPct = e.PercentDone;
+                    logger.LogInformation("Upload progress for {Name}: {Pct}% ({MB:F0}MB of {TotalMB:F0}MB)",
+                        fileName, e.PercentDone,
+                        e.TransferredBytes / 1024.0 / 1024.0,
+                        e.TotalBytes / 1024.0 / 1024.0);
+                }
+            };
+
+            await transfer.UploadAsync(uploadReq);
+
+            var url = $"{_publicUrl.TrimEnd('/')}/{key}";
+            logger.LogInformation("R2 upload complete: {Key} ({SizeMB:F1}MB)", key, length / 1024.0 / 1024.0);
+            return new UploadResult(true, url, key);
+        }
+        catch (AmazonS3Exception ex)
+        {
+            logger.LogError(ex, "R2 S3 error [{Code}] for {Name}", ex.ErrorCode, fileName);
+            return new UploadResult(false, "", "", $"{ex.ErrorCode}: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "R2 raw-stream upload failed for {Name}", fileName);
+            return new UploadResult(false, "", "", ex.Message);
+        }
+    }
+
     // ── Threshold for switching to multipart upload ──────────────────────
     // Anything at or above 25MB uses multipart streaming — this is much
     // lower than the old 100MB cutoff. Multipart streams directly from the
@@ -91,7 +164,16 @@ public class CloudflareService(IConfiguration config, ILogger<CloudflareService>
                 logger.LogInformation("Starting multipart upload for {Name} ({SizeMB:F1}MB)",
                     file.FileName, file.Length / 1024.0 / 1024.0);
 
-                var transfer = new TransferUtility(client);
+                // Higher concurrency than the SDK default (which is
+                // conservative) — on a fast connection/VPS this lets more
+                // 10MB parts upload in parallel instead of mostly
+                // sequentially, meaningfully cutting time for large files.
+                // Has no effect if the bottleneck is the connection's raw
+                // bandwidth rather than request concurrency.
+                var transfer = new TransferUtility(client, new TransferUtilityConfig
+                {
+                    ConcurrentServiceRequests = 8,
+                });
 
                 // Stream directly from the request body — no intermediate
                 // MemoryStream, no buffering the whole file before any
