@@ -254,46 +254,62 @@ public class ModulesController(LmsDbContext db) : ControllerBase
     [HttpGet("course/{courseId}")]
     public async Task<IActionResult> GetByCourse(int courseId)
     {
-        var modules = await db.Modules
-            .Include(m => m.Lessons)
-            .Where(m => m.CourseId == courseId)
-            .OrderBy(m => m.DisplayOrder)
-            .ToListAsync();
-
-        object MapLessonWithChildren(Lesson l, string moduleTitle, Dictionary<int?, List<Lesson>> byParent)
+        try
         {
-            var children = byParent.TryGetValue(l.Id, out var kids)
-                ? kids.OrderBy(k => k.DisplayOrder).Select(k => MapLessonWithChildren(k, moduleTitle, byParent)).ToList()
-                : new List<object>();
-            return new
+            var modules = await db.Modules
+                .Include(m => m.Lessons)
+                .Where(m => m.CourseId == courseId)
+                .OrderBy(m => m.DisplayOrder)
+                .ToListAsync();
+
+            object MapLessonWithChildren(Lesson l, string moduleTitle, Dictionary<int?, List<Lesson>> byParent)
             {
-                l.Id,
-                l.Title,
-                l.Description,
-                Type = l.Type.ToString(),
-                l.IsPreview,
-                l.IsPublished,
-                l.DisplayOrder,
-                l.DurationSecs,
-                l.ModuleId,
-                ModuleTitle = moduleTitle,
-                l.VideoUrl,
-                l.FileUrl,
-                l.Content,
-                l.ParentLessonId,
-                ContentBlocksCount = string.IsNullOrEmpty(l.ContentBlocksJson) ? 0 :
-                    System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(l.ContentBlocksJson).GetArrayLength(),
-                Lessons = children, // nested sub-lessons (tree)
-            };
-        }
+                var children = byParent.TryGetValue(l.Id, out var kids)
+                    ? kids.OrderBy(k => k.DisplayOrder).Select(k => MapLessonWithChildren(k, moduleTitle, byParent)).ToList()
+                    : new List<object>();
+                return new
+                {
+                    l.Id,
+                    l.Title,
+                    l.Description,
+                    Type = l.Type.ToString(),
+                    l.IsPreview,
+                    l.IsPublished,
+                    l.DisplayOrder,
+                    l.DurationSecs,
+                    l.ModuleId,
+                    ModuleTitle = moduleTitle,
+                    l.VideoUrl,
+                    l.FileUrl,
+                    l.Content,
+                    l.ParentLessonId,
+                    ContentBlocksCount = string.IsNullOrEmpty(l.ContentBlocksJson) ? 0 :
+                        System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(l.ContentBlocksJson).GetArrayLength(),
+                    Lessons = children, // nested sub-lessons (tree)
+                };
+            }
 
-        return Ok(modules.Select(m =>
+            return Ok(modules.Select(m =>
+            {
+                var byParent = m.Lessons.GroupBy(l => l.ParentLessonId).ToDictionary(g => g.Key, g => g.ToList());
+                var rootLessons = byParent.TryGetValue(null, out var roots) ? roots : new List<Lesson>();
+                return new ModuleDto(m.Id, m.Title, m.Description, m.DisplayOrder, m.IsPreview, m.CourseId,
+                    rootLessons.OrderBy(l => l.DisplayOrder).Select(l => MapLessonWithChildren(l, m.Title, byParent)).ToList());
+            }));
+        }
+        catch (Exception ex)
         {
-            var byParent = m.Lessons.GroupBy(l => l.ParentLessonId).ToDictionary(g => g.Key, g => g.ToList());
-            var rootLessons = byParent.TryGetValue(null, out var roots) ? roots : new List<Lesson>();
-            return new ModuleDto(m.Id, m.Title, m.Description, m.DisplayOrder, m.IsPreview, m.CourseId,
-                rootLessons.OrderBy(l => l.DisplayOrder).Select(l => MapLessonWithChildren(l, m.Title, byParent)).ToList());
-        }));
+            // Surfaces the REAL database/server error in the response body
+            // instead of a bare 500 — lets the browser's Network tab show
+            // exactly what failed (e.g. "Unknown column 'ParentLessonId'")
+            // without needing direct server log access.
+            return StatusCode(500, new
+            {
+                message = ex.Message,
+                inner = ex.InnerException?.Message,
+                type = ex.GetType().Name
+            });
+        }
     }
 
     [HttpPost]

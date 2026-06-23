@@ -50,31 +50,38 @@ public class LessonsController(LmsDbContext db) : ControllerBase
     [HttpGet("module/{moduleId}")]
     public async Task<IActionResult> GetByModule(int moduleId)
     {
-        // Fetch the whole module's lesson tree in one query, then build
-        // the parent→children structure in memory. Doing the recursion
-        // client-side (in C#, not via N+1 queries) keeps this to a single
-        // round-trip to the database regardless of how deep the tree goes.
-        var allLessons = await db.Lessons
-            .Include(l => l.Module)
-            .Include(l => l.Resources)
-            .Where(l => l.ModuleId == moduleId)
-            .OrderBy(l => l.DisplayOrder)
-            .ToListAsync();
-
-        var byParent = allLessons
-            .GroupBy(l => l.ParentLessonId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        LessonDto MapWithChildren(Lesson l)
+        try
         {
-            var children = byParent.TryGetValue(l.Id, out var kids)
-                ? kids.OrderBy(k => k.DisplayOrder).Select(MapWithChildren).ToList()
-                : new List<LessonDto>();
-            return Map(l) with { ChildLessons = children };
-        }
+            // Fetch the whole module's lesson tree in one query, then build
+            // the parent→children structure in memory. Doing the recursion
+            // client-side (in C#, not via N+1 queries) keeps this to a single
+            // round-trip to the database regardless of how deep the tree goes.
+            var allLessons = await db.Lessons
+                .Include(l => l.Module)
+                .Include(l => l.Resources)
+                .Where(l => l.ModuleId == moduleId)
+                .OrderBy(l => l.DisplayOrder)
+                .ToListAsync();
 
-        var roots = byParent.TryGetValue(null, out var rootLessons) ? rootLessons : [];
-        return Ok(roots.OrderBy(l => l.DisplayOrder).Select(MapWithChildren));
+            var byParent = allLessons
+                .GroupBy(l => l.ParentLessonId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            LessonDto MapWithChildren(Lesson l)
+            {
+                var children = byParent.TryGetValue(l.Id, out var kids)
+                    ? kids.OrderBy(k => k.DisplayOrder).Select(MapWithChildren).ToList()
+                    : new List<LessonDto>();
+                return Map(l) with { ChildLessons = children };
+            }
+
+            var roots = byParent.TryGetValue(null, out var rootLessons) ? rootLessons : [];
+            return Ok(roots.OrderBy(l => l.DisplayOrder).Select(MapWithChildren));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message, type = ex.GetType().Name });
+        }
     }
 
     [HttpGet("{id}")]
@@ -91,49 +98,56 @@ public class LessonsController(LmsDbContext db) : ControllerBase
     [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
     public async Task<IActionResult> Create([FromBody] CreateLessonRequest req)
     {
-        if (!Enum.TryParse<LessonType>(req.Type, out var lt)) lt = LessonType.Video;
-
-        // A parent lesson, if specified, must exist and belong to the same
-        // module — prevents accidentally building a tree that spans
-        // multiple modules, which would make the module's own lesson list
-        // inconsistent.
-        if (req.ParentLessonId is not null)
+        try
         {
-            var parentExists = await db.Lessons.AnyAsync(p => p.Id == req.ParentLessonId.Value && p.ModuleId == req.ModuleId);
-            if (!parentExists)
-                return BadRequest(new { message = "Parent lesson not found in this module" });
+            if (!Enum.TryParse<LessonType>(req.Type, out var lt)) lt = LessonType.Video;
+
+            // A parent lesson, if specified, must exist and belong to the same
+            // module — prevents accidentally building a tree that spans
+            // multiple modules, which would make the module's own lesson list
+            // inconsistent.
+            if (req.ParentLessonId is not null)
+            {
+                var parentExists = await db.Lessons.AnyAsync(p => p.Id == req.ParentLessonId.Value && p.ModuleId == req.ModuleId);
+                if (!parentExists)
+                    return BadRequest(new { message = "Parent lesson not found in this module" });
+            }
+
+            var lesson = new Lesson
+            {
+                Title = req.Title,
+                Description = req.Description,
+                Type = lt,
+                IsPreview = req.IsPreview,
+                IsPublished = req.IsPublished,
+                DisplayOrder = req.DisplayOrder,
+                DurationSecs = req.DurationSecs,
+                ModuleId = req.ModuleId,
+                ParentLessonId = req.ParentLessonId,
+                VideoUrl = req.VideoUrl,
+                FileUrl = req.FileUrl,
+                Content = req.Content,
+            };
+
+            var blocks = new List<ContentBlock>();
+            if (lt == LessonType.Video && req.VideoUrl is not null)
+                blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Video, VideoUrl = req.VideoUrl, VideoTitle = req.Title });
+            else if (lt == LessonType.Article && req.Content is not null)
+                blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Text, TextContent = req.Content });
+            else if (lt == LessonType.Audio && req.FileUrl is not null)
+                blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Audio, AudioUrl = req.FileUrl, AudioTitle = req.Title });
+
+            if (blocks.Any())
+                lesson.ContentBlocksJson = ContentBlocks.Serialize(blocks);
+
+            db.Lessons.Add(lesson);
+            await db.SaveChangesAsync();
+            return CreatedAtAction(nameof(Get), new { id = lesson.Id }, Map(lesson));
         }
-
-        var lesson = new Lesson
+        catch (Exception ex)
         {
-            Title = req.Title,
-            Description = req.Description,
-            Type = lt,
-            IsPreview = req.IsPreview,
-            IsPublished = req.IsPublished,
-            DisplayOrder = req.DisplayOrder,
-            DurationSecs = req.DurationSecs,
-            ModuleId = req.ModuleId,
-            ParentLessonId = req.ParentLessonId,
-            VideoUrl = req.VideoUrl,
-            FileUrl = req.FileUrl,
-            Content = req.Content,
-        };
-
-        var blocks = new List<ContentBlock>();
-        if (lt == LessonType.Video && req.VideoUrl is not null)
-            blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Video, VideoUrl = req.VideoUrl, VideoTitle = req.Title });
-        else if (lt == LessonType.Article && req.Content is not null)
-            blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Text, TextContent = req.Content });
-        else if (lt == LessonType.Audio && req.FileUrl is not null)
-            blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Audio, AudioUrl = req.FileUrl, AudioTitle = req.Title });
-
-        if (blocks.Any())
-            lesson.ContentBlocksJson = ContentBlocks.Serialize(blocks);
-
-        db.Lessons.Add(lesson);
-        await db.SaveChangesAsync();
-        return CreatedAtAction(nameof(Get), new { id = lesson.Id }, Map(lesson));
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message, type = ex.GetType().Name });
+        }
     }
 
     [HttpPut("{id}")]
