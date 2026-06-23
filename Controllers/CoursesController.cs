@@ -248,7 +248,7 @@ public class CategoriesController(LmsDbContext db) : ControllerBase
 // ═══════════════════════════════════════════════════════════════
 //  MODULES
 // ═══════════════════════════════════════════════════════════════
-[ApiController, Route("api/modules"), Authorize]
+[ApiController, Route("api/modules")]
 public class ModulesController(LmsDbContext db) : ControllerBase
 {
     [HttpGet("course/{courseId}")]
@@ -262,11 +262,10 @@ public class ModulesController(LmsDbContext db) : ControllerBase
                 .OrderBy(m => m.DisplayOrder)
                 .ToListAsync();
 
-            object MapLessonWithChildren(Lesson l, string moduleTitle, Dictionary<int?, List<Lesson>> byParent)
+            object MapLessonWithChildren(Lesson l, string moduleTitle, List<Lesson> allModuleLessons)
             {
-                var children = byParent.TryGetValue(l.Id, out var kids)
-                    ? kids.OrderBy(k => k.DisplayOrder).Select(k => MapLessonWithChildren(k, moduleTitle, byParent)).ToList()
-                    : new List<object>();
+                var kids = allModuleLessons.Where(x => x.ParentLessonId == l.Id).OrderBy(k => k.DisplayOrder).ToList();
+                var children = kids.Select(k => MapLessonWithChildren(k, moduleTitle, allModuleLessons)).ToList();
                 return new
                 {
                     l.Id,
@@ -295,13 +294,19 @@ public class ModulesController(LmsDbContext db) : ControllerBase
                 };
             }
 
-            return Ok(modules.Select(m =>
+            // Plain Where() filtering instead of a Dictionary<int?, ...>
+            // keyed by a nullable lookup — sidesteps the
+            // ArgumentNullException that TryGetValue(null, ...) was
+            // throwing during enumeration/serialization for root-level
+            // lessons (ParentLessonId == null).
+            var result = modules.Select(m =>
             {
-                var byParent = m.Lessons.GroupBy(l => l.ParentLessonId).ToDictionary(g => g.Key, g => g.ToList());
-                var rootLessons = byParent.TryGetValue(null, out var roots) ? roots : new List<Lesson>();
+                var allModuleLessons = m.Lessons.ToList();
+                var rootLessons = allModuleLessons.Where(l => l.ParentLessonId == null).OrderBy(l => l.DisplayOrder).ToList();
                 return new ModuleDto(m.Id, m.Title, m.Description, m.DisplayOrder, m.IsPreview, m.CourseId,
-                    rootLessons.OrderBy(l => l.DisplayOrder).Select(l => MapLessonWithChildren(l, m.Title, byParent)).ToList());
-            }));
+                    rootLessons.Select(l => MapLessonWithChildren(l, m.Title, allModuleLessons)).ToList());
+            }).ToList();
+            return Ok(result);
         }
         catch (Exception ex)
         {

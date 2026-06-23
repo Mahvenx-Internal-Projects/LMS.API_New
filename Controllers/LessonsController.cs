@@ -63,20 +63,20 @@ public class LessonsController(LmsDbContext db) : ControllerBase
                 .OrderBy(l => l.DisplayOrder)
                 .ToListAsync();
 
-            var byParent = allLessons
-                .GroupBy(l => l.ParentLessonId)
-                .ToDictionary(g => g.Key, g => g.ToList());
-
+            // Plain Where() filtering instead of a Dictionary<int?, ...>
+            // keyed by a nullable lookup — sidesteps an
+            // ArgumentNullException that TryGetValue(null, ...) threw
+            // during enumeration for root-level lessons (ParentLessonId
+            // == null).
             LessonDto MapWithChildren(Lesson l)
             {
-                var children = byParent.TryGetValue(l.Id, out var kids)
-                    ? kids.OrderBy(k => k.DisplayOrder).Select(MapWithChildren).ToList()
-                    : new List<LessonDto>();
+                var kids = allLessons.Where(x => x.ParentLessonId == l.Id).OrderBy(k => k.DisplayOrder).ToList();
+                var children = kids.Select(MapWithChildren).ToList();
                 return Map(l) with { ChildLessons = children };
             }
 
-            var roots = byParent.TryGetValue(null, out var rootLessons) ? rootLessons : [];
-            return Ok(roots.OrderBy(l => l.DisplayOrder).Select(MapWithChildren));
+            var roots = allLessons.Where(l => l.ParentLessonId == null).OrderBy(l => l.DisplayOrder).ToList();
+            return Ok(roots.Select(MapWithChildren).ToList());
         }
         catch (Exception ex)
         {
