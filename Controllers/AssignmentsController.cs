@@ -78,14 +78,21 @@ public class AssignmentsController(LmsDbContext db, IEmailService email) : Contr
         db.Assignments.Add(a);
         await db.SaveChangesAsync();
 
-        // Notify enrolled students
+        // Notify enrolled students — in-app notification (bell icon) plus email
         var students = await db.Enrollments
             .Include(e => e.User)
             .Where(e => e.CourseId == req.CourseId && e.Status == EnrollmentStatus.Active)
             .Select(e => e.User).ToListAsync();
         var course = await db.Courses.FindAsync(req.CourseId);
         foreach (var s in students)
+        {
             _ = email.SendAssignmentNotificationAsync(s.Email, s.FirstName, req.Title, req.DueDate, course?.Title ?? "");
+            await NotificationHelper.NotifyAsync(db, s.Id,
+                "New assignment posted",
+                $"{req.Title} in {course?.Title ?? "your course"} — due {req.DueDate:MMM dd}",
+                NotificationType.Assignment,
+                $"/dashboard/assignments/{a.Id}");
+        }
 
         return Ok(new { a.Id });
     }
@@ -205,24 +212,39 @@ public class AssignmentsController(LmsDbContext db, IEmailService email) : Contr
 
         await db.SaveChangesAsync();
 
-        // Notify student (best-effort, non-blocking)
+        // Notify student (best-effort, non-blocking) — both in-app
+        // notification (so the bell icon shows it immediately) and email.
         try
         {
             if (requestingResubmit)
+            {
                 _ = email.SendAssignmentNotificationAsync(
                     sub.Student.Email, sub.Student.FirstName,
                     $"Resubmission requested: {sub.Assignment.Title} — {req.Feedback}",
                     sub.Assignment.DueDate, sub.Assignment.Course.Title
                 );
+                await NotificationHelper.NotifyAsync(db, sub.StudentId,
+                    "Resubmission requested",
+                    $"{sub.Assignment.Title} in {sub.Assignment.Course.Title}: {req.Feedback}",
+                    NotificationType.Assignment,
+                    $"/dashboard/assignments/{sub.AssignmentId}");
+            }
             else
+            {
                 _ = email.SendGradeNotificationAsync(
                     sub.Student.Email, sub.Student.FirstName,
                     sub.Assignment.Title, sub.MarksObtained ?? 0,
                     sub.Assignment.MaxMarks, req.Feedback ?? "",
                     sub.Assignment.Course.Title
                 );
+                await NotificationHelper.NotifyAsync(db, sub.StudentId,
+                    "Assignment graded",
+                    $"You scored {sub.MarksObtained}/{sub.Assignment.MaxMarks} on {sub.Assignment.Title}",
+                    NotificationType.Assignment,
+                    $"/dashboard/assignments/{sub.AssignmentId}");
+            }
         }
-        catch { /* email is non-critical */ }
+        catch { /* notification/email is non-critical */ }
 
         return Ok(new { sub.MarksObtained, sub.Feedback, sub.Status });
     }

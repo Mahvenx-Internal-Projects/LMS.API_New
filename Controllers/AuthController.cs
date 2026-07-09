@@ -17,6 +17,7 @@ public class AuthController(LmsDbContext db, IAuthService auth, IEmailService em
     {
         var user = await db.Users
             .Include(u => u.Organization)
+            .Include(u => u.RoleAssignments)
             .FirstOrDefaultAsync(u => u.Email == req.Email && u.IsActive);
 
         if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
@@ -25,7 +26,7 @@ public class AuthController(LmsDbContext db, IAuthService auth, IEmailService em
         user.LastLogin = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        var token        = auth.GenerateJwt(user);
+        var token = auth.GenerateJwt(user);
         var refreshToken = auth.GenerateRefreshToken();
 
         return Ok(new LoginResponse(
@@ -46,17 +47,18 @@ public class AuthController(LmsDbContext db, IAuthService auth, IEmailService em
 
         var user = new User
         {
-            FirstName      = req.FirstName,
-            LastName       = req.LastName,
-            Email          = req.Email,
-            PasswordHash   = BCrypt.Net.BCrypt.HashPassword(req.Password),
-            Role           = UserRole.Student,
-            OrganizationId = req.OrganizationId
+            FirstName = req.FirstName,
+            LastName = req.LastName,
+            Email = req.Email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
+            Role = UserRole.Student,
+            OrganizationId = req.OrganizationId,
+            PhoneNumber = req.PhoneNumber,
         };
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        user = await db.Users.Include(u => u.Organization).FirstAsync(u => u.Id == user.Id);
+        user = await db.Users.Include(u => u.Organization).Include(u => u.RoleAssignments).FirstAsync(u => u.Id == user.Id);
         _ = emailService.SendWelcomeEmailAsync(user.Email, user.FirstName, org.Name);
         return Ok(new LoginResponse(auth.GenerateJwt(user), auth.GenerateRefreshToken(), MapUser(user)));
     }
@@ -65,7 +67,7 @@ public class AuthController(LmsDbContext db, IAuthService auth, IEmailService em
     public async Task<IActionResult> Me()
     {
         var id = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
-        var user = await db.Users.Include(u => u.Organization).FirstOrDefaultAsync(u => u.Id == id);
+        var user = await db.Users.Include(u => u.Organization).Include(u => u.RoleAssignments).FirstOrDefaultAsync(u => u.Id == id);
         if (user is null) return NotFound();
         return Ok(MapUser(user));
     }

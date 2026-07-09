@@ -142,6 +142,37 @@ public class LessonsController(LmsDbContext db) : ControllerBase
 
             db.Lessons.Add(lesson);
             await db.SaveChangesAsync();
+
+            // Notify enrolled students of new content — in-app only (no
+            // email; this can happen often while building a course and
+            // would be noisy). Only for published, top-level lessons —
+            // sub-lessons are usually added while still organizing a
+            // lesson's structure, not a standalone "new content" moment.
+            if (lesson.IsPublished && lesson.ParentLessonId is null)
+            {
+                try
+                {
+                    var courseInfo = await db.Modules
+                        .Where(m => m.Id == lesson.ModuleId)
+                        .Select(m => new { m.CourseId, CourseTitle = m.Course.Title })
+                        .FirstOrDefaultAsync();
+                    if (courseInfo is not null)
+                    {
+                        var studentIds = await db.Enrollments
+                            .Where(e => e.CourseId == courseInfo.CourseId && e.Status == EnrollmentStatus.Active)
+                            .Select(e => e.UserId)
+                            .ToListAsync();
+                        foreach (var studentId in studentIds)
+                            await NotificationHelper.NotifyAsync(db, studentId,
+                                "New lesson added",
+                                $"\"{lesson.Title}\" was added to {courseInfo.CourseTitle}",
+                                NotificationType.General,
+                                $"/dashboard/catalog/{courseInfo.CourseId}");
+                    }
+                }
+                catch { /* notification is non-critical, never block lesson creation on it */ }
+            }
+
             return CreatedAtAction(nameof(Get), new { id = lesson.Id }, Map(lesson));
         }
         catch (Exception ex)
@@ -488,10 +519,21 @@ public class LessonsController(LmsDbContext db) : ControllerBase
                 .AnyAsync(cert => cert.UserId == userId && cert.CourseId == courseId);
             if (!alreadyHasCert)
             {
+                // OrganizationId is required (non-nullable FK) on Certificate
+                // but was never being set here, defaulting to 0 — which has
+                // no matching Organization row and crashed the FK
+                // constraint the moment a student actually completed a
+                // course. Fetch the course's real OrganizationId instead.
+                var orgId = await db.Courses
+                    .Where(c => c.Id == courseId)
+                    .Select(c => c.OrganizationId)
+                    .FirstOrDefaultAsync();
+
                 db.Certificates.Add(new Certificate
                 {
                     UserId = userId,
                     CourseId = courseId,
+                    OrganizationId = orgId,
                     IssuedAt = DateTime.UtcNow,
                     TotalWatchMinutes = enrollment.TotalWatchSeconds / 60,
                     CertificateNumber = Guid.NewGuid().ToString("N")[..12].ToUpper()

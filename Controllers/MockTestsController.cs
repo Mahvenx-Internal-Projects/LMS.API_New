@@ -4,10 +4,11 @@ using LMS.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MiniExcelLibs;
 
 namespace LMS.API.Controllers;
 
-[ApiController, Route("api/mocktests"), Authorize]
+[ApiController, Route("api/mocktests")]
 public class MockTestsController(LmsDbContext db) : ControllerBase
 {
     [HttpGet]
@@ -211,56 +212,64 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
     [HttpPost("start")]
     public async Task<IActionResult> Start([FromBody] StartMockAttemptRequest req)
     {
-        var test = await db.MockTests
-            .Include(m => m.Questions.OrderBy(q => q.DisplayOrder))
-                .ThenInclude(q => q.Options.OrderBy(o => o.DisplayOrder))
-            .FirstOrDefaultAsync(m => m.Id == req.MockTestId && m.Status == MockTestStatus.Published);
-
-        if (test is null) return NotFound(new { message = "Test not found or not published" });
-
-        if (!test.Questions.Any())
-            return BadRequest(new { message = "This test has no questions yet. Add questions before starting." });
-
-        var prevCount = await db.MockTestAttempts.CountAsync(a => a.MockTestId == req.MockTestId && a.StudentId == req.StudentId);
-        if (prevCount >= test.MaxAttempts)
-            return BadRequest(new { message = $"Maximum {test.MaxAttempts} attempts reached" });
-
-        var attempt = new MockTestAttempt
+        try
         {
-            MockTestId = req.MockTestId,
-            StudentId = req.StudentId,
-            AttemptNumber = prevCount + 1
-        };
-        db.MockTestAttempts.Add(attempt);
-        await db.SaveChangesAsync();
+            var test = await db.MockTests
+                .Include(m => m.Questions.OrderBy(q => q.DisplayOrder))
+                    .ThenInclude(q => q.Options.OrderBy(o => o.DisplayOrder))
+                .FirstOrDefaultAsync(m => m.Id == req.MockTestId && m.Status == MockTestStatus.Published);
 
-        // Guard against TotalQuestions being 0/unset — fall back to using
-        // all available questions rather than returning an empty test.
-        var takeCount = test.TotalQuestions > 0 ? test.TotalQuestions : test.Questions.Count;
+            if (test is null) return NotFound(new { message = "Test not found or not published" });
 
-        var questions = test.RandomizeQuestions
-            ? test.Questions.OrderBy(_ => Guid.NewGuid()).Take(takeCount).ToList()
-            : test.Questions.Take(takeCount).ToList();
+            if (!test.Questions.Any())
+                return BadRequest(new { message = "This test has no questions yet. Add questions before starting." });
 
-        return Ok(new
-        {
-            attemptId = attempt.Id,
-            timeLimitMins = test.TimeLimitMins,
-            totalQuestions = questions.Count,
-            attemptNumber = attempt.AttemptNumber,
-            questions = questions.Select(q => new
+            var prevCount = await db.MockTestAttempts.CountAsync(a => a.MockTestId == req.MockTestId && a.StudentId == req.StudentId);
+            if (prevCount >= test.MaxAttempts)
+                return BadRequest(new { message = $"Maximum {test.MaxAttempts} attempts reached" });
+
+            var attempt = new MockTestAttempt
             {
-                q.Id,
-                q.Text,
-                q.ImageUrl,
-                q.Topic,
-                q.Marks,
-                q.FormulaLatex,
-                Difficulty = q.Difficulty.ToString(),
-                QuestionType = q.QuestionType.ToString(),
-                options = q.Options.Select(o => new { o.Id, o.Text, o.ImageUrl })
-            })
-        });
+                MockTestId = req.MockTestId,
+                StudentId = req.StudentId,
+                UserId = req.StudentId,  // UserId is the actual FK on MockTestAttempts → Users; StudentId is a duplicate column that doesn't carry the constraint
+                AttemptNumber = prevCount + 1
+            };
+            db.MockTestAttempts.Add(attempt);
+            await db.SaveChangesAsync();
+
+            // Guard against TotalQuestions being 0/unset — fall back to using
+            // all available questions rather than returning an empty test.
+            var takeCount = test.TotalQuestions > 0 ? test.TotalQuestions : test.Questions.Count;
+
+            var questions = test.RandomizeQuestions
+                ? test.Questions.OrderBy(_ => Guid.NewGuid()).Take(takeCount).ToList()
+                : test.Questions.Take(takeCount).ToList();
+
+            return Ok(new
+            {
+                attemptId = attempt.Id,
+                timeLimitMins = test.TimeLimitMins,
+                totalQuestions = questions.Count,
+                attemptNumber = attempt.AttemptNumber,
+                questions = questions.Select(q => new
+                {
+                    q.Id,
+                    q.Text,
+                    q.ImageUrl,
+                    q.Topic,
+                    q.Marks,
+                    q.FormulaLatex,
+                    Difficulty = q.Difficulty.ToString(),
+                    QuestionType = q.QuestionType.ToString(),
+                    options = q.Options.Select(o => new { o.Id, o.Text, o.ImageUrl })
+                })
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message, type = ex.GetType().Name });
+        }
     }
 
     // ─── Submit attempt ────────────────────────────────────────
@@ -485,6 +494,106 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
             a.CompletedAt,
             student = new { a.Student.Id, a.Student.FirstName, a.Student.LastName }
         }));
+    }
+
+    // ─── Bulk upload questions from Excel ─────────────────────
+    [HttpPost("{testId}/questions/bulk-upload")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> BulkUploadQuestions(int testId, IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "No file uploaded" });
+
+        var test = await db.MockTests.FindAsync(testId);
+        if (test is null) return NotFound(new { message = "Test not found" });
+
+        try
+        {
+            using var stream = file.OpenReadStream();
+            var rows = stream.Query(useHeaderRow: true).Cast<IDictionary<string, object>>().ToList();
+
+            var questions = new List<MockTestQuestion>();
+            var errors = new List<string>();
+            int rowNum = 2;
+
+            foreach (var row in rows)
+            {
+                string Get(string key) => row.TryGetValue(key, out var v) && v != null ? v.ToString()!.Trim() : "";
+
+                var questionText = Get("Question Text *");
+                if (string.IsNullOrEmpty(questionText)) { rowNum++; continue; }
+
+                var typeStr = Get("Question Type *\n(SingleChoice/MultiChoice/TrueFalse/ShortAnswer)");
+                if (string.IsNullOrEmpty(typeStr)) typeStr = Get("Question Type *");
+                // Allow both "MultiChoice" and "MultipleChoice" spellings
+                if (typeStr.Equals("MultiChoice", StringComparison.OrdinalIgnoreCase)) typeStr = "MultipleChoice";
+                if (!Enum.TryParse<MockQuestionType>(typeStr, true, out var qType))
+                    qType = MockQuestionType.SingleChoice;
+
+                int marks = int.TryParse(Get("Marks"), out var m) ? m : 1;
+                int negMarks = int.TryParse(Get("Negative Marks"), out var nm) ? nm : 0;
+                if (!Enum.TryParse<MockTestDifficulty>(Get("Difficulty\n(Easy/Medium/Hard)"), true, out var diff))
+                    if (!Enum.TryParse<MockTestDifficulty>(Get("Difficulty"), true, out diff))
+                        diff = MockTestDifficulty.Medium;
+
+                var q = new MockTestQuestion
+                {
+                    Text = questionText,
+                    Topic = Get("Topic"),
+                    Difficulty = diff,
+                    QuestionType = qType,
+                    Marks = marks,
+                    NegativeMarks = negMarks,
+                    Explanation = Get("Explanation"),
+                    DisplayOrder = questions.Count,
+                    MockTestId = testId,
+                };
+
+                var correctRaw = Get("Correct Answer(s) *\n(A,B,C,D,E or A;B for multi)");
+                if (string.IsNullOrEmpty(correctRaw)) correctRaw = Get("Correct Answer(s) *");
+
+                if (qType == MockQuestionType.ShortAnswer)
+                {
+                    // For short answer, the "correct answer" field holds the expected text
+                }
+                else
+                {
+                    var optionKeys = new[] { "Option A *", "Option B *", "Option C", "Option D", "Option E" };
+                    var letters = new[] { "A", "B", "C", "D", "E" };
+                    var correctLetters = correctRaw.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim().ToUpper()).ToHashSet();
+
+                    for (int i = 0; i < optionKeys.Length; i++)
+                    {
+                        var optText = Get(optionKeys[i]);
+                        if (string.IsNullOrEmpty(optText) && i >= 2) continue;
+                        if (string.IsNullOrEmpty(optText)) { errors.Add($"Row {rowNum}: Option {letters[i]} is required"); continue; }
+                        q.Options.Add(new MockTestOption
+                        {
+                            Text = optText,
+                            IsCorrect = correctLetters.Contains(letters[i]),
+                            DisplayOrder = i,
+                        });
+                    }
+                }
+
+                questions.Add(q);
+                rowNum++;
+            }
+
+            if (errors.Any())
+                return BadRequest(new { message = "Upload has errors", errors });
+
+            db.MockTestQuestions.AddRange(questions);
+            test.TotalQuestions = await db.MockTestQuestions.CountAsync(q => q.MockTestId == testId) + questions.Count;
+            await db.SaveChangesAsync();
+
+            return Ok(new { imported = questions.Count, total = test.TotalQuestions });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Failed to parse file: " + ex.Message });
+        }
     }
 
     static MockTestDto MapTest(MockTest m, bool includeQuestions) => new(

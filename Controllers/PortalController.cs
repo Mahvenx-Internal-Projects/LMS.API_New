@@ -256,7 +256,13 @@ public class PortalController(LmsDbContext db) : ControllerBase
         c.Modules.OrderBy(m => m.DisplayOrder).Select(m => new PublicModuleDto(
             m.Id, m.Title, m.Description,
             m.Lessons.OrderBy(l => l.DisplayOrder).Select(l => new PublicLessonDto(
-                l.Id, l.Title, l.Type.ToString(), l.DurationSecs, l.IsPreview
+                l.Id, l.Title, l.Type.ToString(), l.DurationSecs, l.IsPreview,
+                // Only ever send real content for lessons explicitly marked
+                // as free preview — anything else stays metadata-only so a
+                // non-enrolled visitor can never pull paid lesson content
+                // through this public endpoint.
+                l.IsPreview ? l.VideoUrl : null,
+                l.IsPreview ? l.Content : null
             )).ToList()
         )).ToList()
     );
@@ -286,4 +292,4 @@ public record PublicCourseDto(
 );
 
 public record PublicModuleDto(int Id, string Title, string? Description, List<PublicLessonDto> Lessons);
-public record PublicLessonDto(int Id, string Title, string Type, int DurationSecs, bool IsPreview);
+public record PublicLessonDto(int Id, string Title, string Type, int DurationSecs, bool IsPreview, string? VideoUrl = null, string? Content = null);

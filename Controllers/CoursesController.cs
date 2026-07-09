@@ -118,6 +118,12 @@ public class CoursesController(LmsDbContext db) : ControllerBase
             if (req.Price is not null) course.Price = req.Price.Value;
             if (req.IsFree is not null) course.IsFree = req.IsFree.Value;
             if (req.CategoryId is not null) course.CategoryId = req.CategoryId.Value;
+            // Allow clearing the instructor by sending 0/null explicitly,
+            // same convention used in Create's "req.InstructorId is > 0"
+            // check — distinguishes "field omitted, leave unchanged" from
+            // "field sent as 0, clear the assignment".
+            if (req.InstructorId is not null)
+                course.InstructorId = req.InstructorId > 0 ? req.InstructorId : null;
             if (req.Tags is not null) course.Tags = req.Tags;
             if (req.EnforceSequentialLessons is not null) course.EnforceSequentialLessons = req.EnforceSequentialLessons.Value;
             course.UpdatedAt = DateTime.UtcNow;
@@ -248,7 +254,7 @@ public class CategoriesController(LmsDbContext db) : ControllerBase
 // ═══════════════════════════════════════════════════════════════
 //  MODULES
 // ═══════════════════════════════════════════════════════════════
-[ApiController, Route("api/modules")]
+[ApiController, Route("api/modules"), Authorize]
 public class ModulesController(LmsDbContext db) : ControllerBase
 {
     [HttpGet("course/{courseId}")]

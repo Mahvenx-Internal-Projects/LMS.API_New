@@ -5,7 +5,7 @@ namespace LMS.API.DTOs;
 // ─── AUTH ──────────────────────────────────────────────────────────────────────
 public record LoginRequest(string Email, string Password);
 public record LoginResponse(string Token, string RefreshToken, UserDto User);
-public record RegisterRequest(string FirstName, string LastName, string Email, string Password, int OrganizationId);
+public record RegisterRequest(string FirstName, string LastName, string Email, string Password, int OrganizationId, string? PhoneNumber = null);
 
 // ─── ORGANIZATION ──────────────────────────────────────────────────────────────
 public record OrganizationDto(
@@ -73,7 +73,7 @@ public record CourseDto(
     bool EnforceSequentialLessons = false
 );
 public record CreateCourseRequest(string Title, string? Description, string? ThumbnailUrl, string Level, decimal Price, bool IsFree, int? CategoryId, int? InstructorId, int OrganizationId, string? Tags, string? Language = "English", bool EnforceSequentialLessons = false);
-public record UpdateCourseRequest(string? Title, string? Description, string? ThumbnailUrl, string? Level, string? Status, decimal? Price, bool? IsFree, int? CategoryId, string? Tags, bool? EnforceSequentialLessons = null);
+public record UpdateCourseRequest(string? Title, string? Description, string? ThumbnailUrl, string? Level, string? Status, decimal? Price, bool? IsFree, int? CategoryId, string? Tags, bool? EnforceSequentialLessons = null, int? InstructorId = null);
 
 // ─── MODULE ────────────────────────────────────────────────────────────────────
 public record ModuleDto(int Id, string Title, string? Description, int DisplayOrder, bool IsPreview, int CourseId, List<object>? Lessons);
@@ -194,4 +194,4 @@ public record MockTestAnalysisDto(int StudentId, string StudentName, int TotalAt
 // ─── INTERVIEW SCHEDULE ────────────────────────────────────────────────────────
 public record InterviewScheduleDto(int Id, string Title, string? Description, DateTime ScheduledAt, int DurationMinutes, string? Platform, string? MeetingLink, string? InterviewerName, string? InterviewerEmail, string Status, string? Notes, string? Feedback, int StudentId, string StudentName, int? CourseId, string? CourseTitle, bool EmailSent, DateTime CreatedAt);
 public record CreateInterviewRequest(string Title, string? Description, DateTime ScheduledAt, int DurationMinutes, string? Platform, string? MeetingLink, string? InterviewerName, string? InterviewerEmail, string? Notes, int StudentId, int? CourseId, int OrganizationId);
-public record UpdateInterviewRequest(string? Status, string? Notes, string? Feedback, DateTime? ScheduledAt, string? MeetingLink);
+public record UpdateInterviewRequest(string? Status, string? Notes, string? Feedback, DateTime? ScheduledAt, string? MeetingLink);  

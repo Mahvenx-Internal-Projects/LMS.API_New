@@ -22,12 +22,12 @@ public interface IEmailService
 
 public class EmailService(IConfiguration config, ILogger<EmailService> logger) : IEmailService
 {
-    readonly string _host      = config["Smtp:Host"]!;
-    readonly int    _port      = int.Parse(config["Smtp:Port"] ?? "587");
-    readonly string _user      = config["Smtp:User"]!;
-    readonly string _password  = config["Smtp:Password"]!;
-    readonly string _from      = config["Smtp:From"]!;
-    readonly string _fromName  = config["Smtp:FromName"]!;
+    readonly string _host = config["Smtp:Host"]!;
+    readonly int _port = int.Parse(config["Smtp:Port"] ?? "587");
+    readonly string _user = config["Smtp:User"]!;
+    readonly string _password = config["Smtp:Password"]!;
+    readonly string _from = config["Smtp:From"]!;
+    readonly string _fromName = config["Smtp:FromName"]!;
 
     async Task SendAsync(string to, string toName, string subject, string html)
     {
@@ -37,19 +37,45 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
         message.Subject = subject;
         message.Body = new TextPart("html") { Text = html };
 
-        try
+        // Try the configured host/port/security mode first. GoDaddy's mail
+        // servers (smtpout.secureserver.net) commonly need SSL-on-465
+        // rather than STARTTLS-on-587 depending on the account type — if
+        // the primary attempt fails, retry once with the other common
+        // combination before giving up, so a single misconfigured port
+        // doesn't silently block every email.
+        var attempts = new[]
         {
-            using var smtp = new SmtpClient();
-            await smtp.ConnectAsync(_host, _port, SecureSocketOptions.StartTls);
-            await smtp.AuthenticateAsync(_user, _password);
-            await smtp.SendAsync(message);
-            await smtp.DisconnectAsync(true);
-            logger.LogInformation("Email sent to {To}: {Subject}", to, subject);
-        }
-        catch (Exception ex)
+            (_host, _port, SecureSocketOptions.StartTls),
+            (_host, 465, SecureSocketOptions.SslOnConnect),
+        };
+
+        Exception? lastError = null;
+        foreach (var (host, port, security) in attempts)
         {
-            logger.LogError(ex, "Failed to send email to {To}: {Subject}", to, subject);
+            try
+            {
+                using var smtp = new SmtpClient();
+                logger.LogInformation("Connecting to SMTP {Host}:{Port} ({Security}) as {User}", host, port, security, _user);
+                await smtp.ConnectAsync(host, port, security);
+                await smtp.AuthenticateAsync(_user, _password);
+                await smtp.SendAsync(message);
+                await smtp.DisconnectAsync(true);
+                logger.LogInformation("Email sent to {To}: {Subject} (via {Host}:{Port})", to, subject, host, port);
+                return; // success — stop trying further combinations
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                logger.LogWarning("SMTP attempt via {Host}:{Port} failed: {Message}", host, port, ex.Message);
+            }
         }
+
+        // Every attempt failed — log the full exception (including
+        // MailKit's specific SmtpCommandException/AuthenticationException
+        // detail, which ex.Message alone often truncates) so "why isn't
+        // email sending" is actually diagnosable from the logs.
+        logger.LogError(lastError, "Failed to send email to {To}: {Subject} after trying all SMTP configurations. Host={Host} User={User}. Full exception: {Exception}",
+            to, subject, _host, _user, lastError?.ToString());
     }
 
     static string BaseTemplate(string brandColor, string orgName, string content)
@@ -230,7 +256,7 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
     public async Task SendExamResultAsync(string to, string name, string examTitle, int score, bool passed, string orgName)
     {
         var badge = passed ? "<span class='badge badge-green'>PASSED ✓</span>" : "<span class='badge badge-red'>FAILED ✗</span>";
-        var msg   = passed
+        var msg = passed
             ? "You've passed the exam! Your certificate will be issued shortly."
             : "Don't give up! Review the course material and try again.";
         var content = $"""
@@ -321,7 +347,7 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
             {(string.IsNullOrEmpty(meetingLink) ? "" : $"<a href='{meetingLink}' class='btn'>Join Interview →</a>")}
             <p class=""text"" style=""color:#555"">Tips: Be on time, test your internet connection, and keep your documents ready. Best of luck! 🍀</p>";
 
-        await SendAsync(to, name, $"Interview Scheduled: {title} on {scheduledAt:MMM dd}", BaseTemplate("#7c3aed", "LMS Portal", content));
+        await  SendAsync(to, name, $"Interview Scheduled: {title} on {scheduledAt:MMM dd}", BaseTemplate("#7c3aed", "LMS Portal", content));
     }
 
 }

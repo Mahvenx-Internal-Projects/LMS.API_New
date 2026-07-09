@@ -25,6 +25,7 @@ public class LmsDbContext(DbContextOptions<LmsDbContext> options) : DbContext(op
     public DbSet<LessonProgress> LessonProgresses => Set<LessonProgress>();
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<Certificate> Certificates => Set<Certificate>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     // Exams
     public DbSet<Exam> Exams => Set<Exam>();

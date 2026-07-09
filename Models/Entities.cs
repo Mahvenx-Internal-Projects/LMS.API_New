@@ -17,7 +17,7 @@ public enum PaymentStatus { Free, FullyPaid, PartiallyPaid, Pending }
 public enum MockTestDifficulty { Easy, Medium, Hard, Mixed }
 public enum ResourceType { Video, PDF, Document, Image, Link, Other }
 
-public enum BlockType { Heading, Text, Image, Video, Audio, Pdf, PDF, File, Callout, Code, Divider }
+public enum BlockType { Heading, Text, Image, Video, Audio, PDF, File, Callout, Code, Divider }
 
 // ─── ORGANIZATION ─────────────────────────────────────────────────────────────
 public class Organization
@@ -292,6 +292,24 @@ public class Enrollment
     public Course Course { get; set; } = null!;
 }
 
+// ─── NOTIFICATION ─────────────────────────────────────────────────────────────
+public enum NotificationType { Enrollment, Assignment, Grade, LiveClass, Interview, Certificate, CoursePublished, General }
+
+public class Notification
+{
+    public int Id { get; set; }
+    [Required, MaxLength(200)] public string Title { get; set; } = "";
+    [MaxLength(1000)] public string? Body { get; set; }
+    public NotificationType Type { get; set; } = NotificationType.General;
+    // Optional deep-link the frontend can navigate to when the
+    // notification is clicked (e.g. /dashboard/catalog/12).
+    public string? LinkUrl { get; set; }
+    public bool IsRead { get; set; } = false;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+}
+
 // ─── CERTIFICATE ──────────────────────────────────────────────────────────────
 public class Certificate
 {
@@ -330,7 +348,7 @@ public class MockTest
     public int PassMarkPercent { get; set; } = 60;
     public bool RandomizeQuestions { get; set; } = false;
     public bool ShowResultImmediately { get; set; } = true;
-    public int MaxAttempts { get; set; } = 3;
+    public int MaxAttempts { get; set; } = 1;
     public string? Tags { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int OrganizationId { get; set; }
@@ -739,7 +757,7 @@ public class Exam
     public int TimeLimitMins { get; set; } = 60;
     public int DurationMinutes { get; set; } = 60;
     public int PassMarkPercent { get; set; } = 50;
-    public int MaxAttempts { get; set; } = 3;
+    public int MaxAttempts { get; set; } = 1;
     public bool Randomize { get; set; } = false;
     public bool IsPublished { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
