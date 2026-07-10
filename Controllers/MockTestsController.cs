@@ -280,13 +280,23 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
 
             // TotalQuestions=0 means "not configured" — default to 20 random questions.
             // Never serve the entire question bank to the student.
-            var takeCount = test.TotalQuestions > 0
-                ? Math.Min(test.TotalQuestions, test.Questions.Count)
-                : Math.Min(20, test.Questions.Count);
+            // Separate MCQ and Coding questions
+            var mcqQuestions = test.Questions.Where(q => q.QuestionType != MockQuestionType.Coding).ToList();
+            var codingQuestions = test.Questions.Where(q => q.QuestionType == MockQuestionType.Coding).ToList();
 
-            var questions = test.RandomizeQuestions
-                ? test.Questions.OrderBy(_ => Guid.NewGuid()).Take(takeCount).ToList()
-                : test.Questions.Take(takeCount).ToList();
+            // How many MCQ to show: TotalQuestions - coding count (always show all coding, max 2)
+            var codingToShow = Math.Min(codingQuestions.Count, 2);
+            var mcqToShow = Math.Max(0, (test.TotalQuestions > 0 ? test.TotalQuestions : 20) - codingToShow);
+
+            // Randomize MCQ pool, then take required count. Coding always last (fixed order).
+            var selectedMcq = test.RandomizeQuestions
+                ? mcqQuestions.OrderBy(_ => Guid.NewGuid()).Take(mcqToShow).ToList()
+                : mcqQuestions.OrderBy(q => q.DisplayOrder).Take(mcqToShow).ToList();
+
+            var selectedCoding = codingQuestions.OrderBy(q => q.DisplayOrder).Take(codingToShow).ToList();
+
+            // Final question list: MCQ first (questions 1-18), coding last (19-20)
+            var questions = selectedMcq.Concat(selectedCoding).ToList();
 
             return Ok(new
             {

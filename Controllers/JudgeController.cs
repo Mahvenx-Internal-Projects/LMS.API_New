@@ -97,11 +97,10 @@ public class JudgeController(LmsDbContext db, ILogger<JudgeController> logger) :
             return lang switch
             {
                 "python" or "python3" or "py" => await RunPython(code, stdin, tmpDir),
-                "cpp" or "c++" => await RunCpp(code, stdin, tmpDir),
-                "c" => await RunC(code, stdin, tmpDir),
+                "csharp" or "c#" or "cs" => await RunCSharp(code, stdin, tmpDir),
                 "java" => await RunJava(code, stdin, tmpDir),
                 "js" or "javascript" or "node" => await RunJs(code, stdin, tmpDir),
-                _ => new ExecutionResult { Status = "UnsupportedLanguage", Stderr = $"Language '{language}' is not supported. Supported: python, cpp, c, java, js" }
+                _ => new ExecutionResult { Status = "UnsupportedLanguage", Stderr = $"Language '{language}' is not supported. Supported: python, csharp, java, js" }
             };
         }
         finally
@@ -116,37 +115,46 @@ public class JudgeController(LmsDbContext db, ILogger<JudgeController> logger) :
     {
         var file = Path.Combine(dir, "solution.py");
         await System.IO.File.WriteAllTextAsync(file, code);
-        return await RunProcess("python3", $"\"{file}\"", stdin, dir);
+        // Try python3 first, fall back to python
+        var result = await RunProcess("python3", $"\"{file}\"", stdin, dir);
+        if (result.Status == "RuntimeError" && result.Stderr.Contains("was not found"))
+            result = await RunProcess("python", $"\"{file}\"", stdin, dir);
+        return result;
     }
 
-    // ── C++ ────────────────────────────────────────────────────────
-    async Task<ExecutionResult> RunCpp(string code, string stdin, string dir)
+    // ── C# (dotnet-script or csc) ──────────────────────────────────
+    async Task<ExecutionResult> RunCSharp(string code, string stdin, string dir)
     {
-        var src = Path.Combine(dir, "solution.cpp");
-        var exe = Path.Combine(dir, "solution");
-        await System.IO.File.WriteAllTextAsync(src, code);
+        // Wrap bare code in a minimal Program class if no namespace/class present
+        string src;
+        if (!code.Contains("class ") && !code.Contains("namespace "))
+        {
+            src = "using System;\n"
+                + "using System.Linq;\n"
+                + "using System.Collections.Generic;\n\n"
+                + "class Solution {\n"
+                + "    static void Main(string[] args) {\n"
+                + code + "\n"
+                + "    }\n"
+                + "}\n";
+        }
+        else src = code;
 
-        // Compile first
-        var compile = await RunProcess("g++", $"-O2 -o \"{exe}\" \"{src}\" -std=c++17", "", dir, isCompile: true);
-        if (!string.IsNullOrEmpty(compile.CompileOutput))
-            return compile; // compilation failed
+        var file = Path.Combine(dir, "Solution.cs");
+        await System.IO.File.WriteAllTextAsync(file, src);
 
-        // Run the compiled binary
-        return await RunProcess(exe, "", stdin, dir);
-    }
+        // Try dotnet-script first (handles single-file C# well)
+        var scriptResult = await RunProcess("dotnet-script", $"\"{file}\"", stdin, dir);
+        if (scriptResult.Status != "RuntimeError" || !scriptResult.Stderr.Contains("not found"))
+            return scriptResult;
 
-    // ── C ──────────────────────────────────────────────────────────
-    async Task<ExecutionResult> RunC(string code, string stdin, string dir)
-    {
-        var src = Path.Combine(dir, "solution.c");
-        var exe = Path.Combine(dir, "solution");
-        await System.IO.File.WriteAllTextAsync(src, code);
-
-        var compile = await RunProcess("gcc", $"-O2 -o \"{exe}\" \"{src}\"", "", dir, isCompile: true);
+        // Fall back to csc (Mono) if dotnet-script not available
+        var exe = Path.Combine(dir, "Solution.exe");
+        var compile = await RunProcess("csc", $"-out:\"{exe}\" \"{file}\"", "", dir, isCompile: true);
         if (!string.IsNullOrEmpty(compile.CompileOutput))
             return compile;
 
-        return await RunProcess(exe, "", stdin, dir);
+        return await RunProcess("mono", $"\"{exe}\"", stdin, dir);
     }
 
     // ── Java ───────────────────────────────────────────────────────
