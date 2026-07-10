@@ -39,6 +39,8 @@ public class LmsDbContext(DbContextOptions<LmsDbContext> options) : DbContext(op
     public DbSet<MockTest> MockTests => Set<MockTest>();
     public DbSet<MockTestQuestion> MockTestQuestions => Set<MockTestQuestion>();
     public DbSet<MockTestOption> MockTestOptions => Set<MockTestOption>();
+    public DbSet<CodingQuestion> CodingQuestions => Set<CodingQuestion>();
+    public DbSet<TestCase> TestCases => Set<TestCase>();
     public DbSet<MockTestAttempt> MockTestAttempts => Set<MockTestAttempt>();
     public DbSet<MockTestAnswer> MockTestAnswers => Set<MockTestAnswer>();
     public DbSet<TopicScore> TopicScores => Set<TopicScore>();

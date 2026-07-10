@@ -333,7 +333,7 @@ public class Certificate
 // ─── MOCK TEST ────────────────────────────────────────────────────────────────
 public enum MockTestStatus { Draft, Published, Archived }
 public enum MockAttemptStatus { InProgress, Completed, Abandoned }
-public enum MockQuestionType { SingleChoice, MultipleChoice, MultiChoice, TrueFalse, ShortAnswer, Dropdown, Formula }
+public enum MockQuestionType { SingleChoice, MultipleChoice, MultiChoice, TrueFalse, ShortAnswer, Dropdown, Formula, Coding }
 
 public class MockTest
 {
@@ -378,6 +378,7 @@ public class MockTestQuestion
     public int MockTestId { get; set; }
     public MockTest MockTest { get; set; } = null!;
     public ICollection<MockTestOption> Options { get; set; } = [];
+    public CodingQuestion? CodingQuestion { get; set; } // only for QuestionType == Coding
 }
 
 public class MockTestOption
@@ -876,4 +877,33 @@ public class MockTestAnswer
     public MockTestAttempt Attempt { get; set; } = null!;
     public int QuestionId { get; set; }
     public MockTestQuestion Question { get; set; } = null!;
+}
+// ─── CODING QUESTIONS ──────────────────────────────────────────────────────
+// Linked to MockTestQuestion when QuestionType == Coding. Stores the
+// problem statement, starter code per language, and test cases.
+public class CodingQuestion
+{
+    public int Id { get; set; }
+    [Required] public string ProblemStatement { get; set; } = ""; // HTML
+    public string? Constraints { get; set; }
+    public string? SampleInput { get; set; }
+    public string? SampleOutput { get; set; }
+    public string? StarterCodeCpp { get; set; }
+    public string? StarterCodeJava { get; set; }
+    public string? StarterCodePython { get; set; }
+    public string? StarterCodeJs { get; set; }
+    public int MockTestQuestionId { get; set; }
+    public MockTestQuestion MockTestQuestion { get; set; } = null!;
+    public ICollection<TestCase> TestCases { get; set; } = [];
+}
+
+public class TestCase
+{
+    public int Id { get; set; }
+    [Required] public string Input { get; set; } = "";
+    [Required] public string ExpectedOutput { get; set; } = "";
+    public bool IsHidden { get; set; } = false; // Hidden cases used for scoring, visible cases shown to student
+    public int DisplayOrder { get; set; }
+    public int CodingQuestionId { get; set; }
+    public CodingQuestion CodingQuestion { get; set; } = null!;
 }

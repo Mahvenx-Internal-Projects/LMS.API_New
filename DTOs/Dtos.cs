@@ -194,4 +194,20 @@ public record MockTestAnalysisDto(int StudentId, string StudentName, int TotalAt
 // ─── INTERVIEW SCHEDULE ────────────────────────────────────────────────────────
 public record InterviewScheduleDto(int Id, string Title, string? Description, DateTime ScheduledAt, int DurationMinutes, string? Platform, string? MeetingLink, string? InterviewerName, string? InterviewerEmail, string Status, string? Notes, string? Feedback, int StudentId, string StudentName, int? CourseId, string? CourseTitle, bool EmailSent, DateTime CreatedAt);
 public record CreateInterviewRequest(string Title, string? Description, DateTime ScheduledAt, int DurationMinutes, string? Platform, string? MeetingLink, string? InterviewerName, string? InterviewerEmail, string? Notes, int StudentId, int? CourseId, int OrganizationId);
-public record UpdateInterviewRequest(string? Status, string? Notes, string? Feedback, DateTime? ScheduledAt, string? MeetingLink);  
+public record UpdateInterviewRequest(string? Status, string? Notes, string? Feedback, DateTime? ScheduledAt, string? MeetingLink);
+// Coding/judge DTOs
+public record RunCodeRequest(string Code, string Language, string? Input);
+public record SubmitCodeRequest(string Code, string Language);
+public record CreateCodingQuestionRequest(
+    int MockTestQuestionId,
+    string ProblemStatement,
+    string? Constraints,
+    string? SampleInput,
+    string? SampleOutput,
+    string? StarterCodeCpp,
+    string? StarterCodeJava,
+    string? StarterCodePython,
+    string? StarterCodeJs,
+    List<TestCaseRequest>? TestCases
+);
+public record TestCaseRequest(string Input, string ExpectedOutput, bool IsHidden, int Order);

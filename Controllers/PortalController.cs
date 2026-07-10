@@ -20,40 +20,27 @@ public class PortalController(LmsDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(url))
             return BadRequest(new { message = "url parameter is required" });
 
-        // ── Local dev bypass ─────────────────────────────────────────────────
-        // If running on localhost (any port), skip URL matching and return the
-        // first active organization so developers don't need to update PortalUrl.
-        var host = url.TrimEnd('/').ToLowerInvariant();
-        var isLocalhost = host.StartsWith("http://localhost") ||
-                          host.StartsWith("http://127.0.0.1") ||
-                          host.StartsWith("https://localhost") ||
-                          host.StartsWith("https://127.0.0.1");
-
-        if (isLocalhost)
-        {
-            // Return the FULL organization (not a stripped theme DTO) so the
-            // homepage feature flags and content fields are available too.
-            var devOrg = await db.Organizations
-                .Where(o => o.IsActive)
-                .FirstOrDefaultAsync();
-
-            if (devOrg is null)
-                return NotFound(new { authorized = false, message = "No active organization found." });
-
-            return Ok(new { authorized = true, organization = devOrg });
-        }
-
-        // ── Production: match URL against PortalUrl in DB ────────────────────
-        var normalised = host;
+        // Strict match — normalize only trailing slash and casing.
+        // Port MUST match exactly. No localhost bypass.
+        // Whatever is stored in PortalUrl in the DB must exactly match
+        // what the browser sends (protocol + host + port).
+        // e.g. DB has "http://localhost:5173" → only that URL is allowed.
+        //      DB has "https://scolared.com"  → only that URL is allowed.
+        var incoming = url.TrimEnd('/').ToLowerInvariant();
 
         var org = await db.Organizations
             .Where(o => o.IsActive &&
                         o.PortalUrl != null &&
-                        o.PortalUrl.ToLower().TrimEnd('/') == normalised)
+                        o.PortalUrl.ToLower().TrimEnd('/') == incoming)
             .FirstOrDefaultAsync();
 
         if (org is null)
-            return NotFound(new { authorized = false, message = "No organization is registered for this URL." });
+            return NotFound(new
+            {
+                authorized = false,
+                message = $"Access denied. '{incoming}' is not registered as a portal URL. " +
+                          "Set the exact URL (including port if any) in Org Settings → Portal URL."
+            });
 
         return Ok(new { authorized = true, organization = org });
     }
