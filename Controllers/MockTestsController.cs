@@ -217,16 +217,29 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
             var test = await db.MockTests
                 .Include(m => m.Questions.OrderBy(q => q.DisplayOrder))
                     .ThenInclude(q => q.Options.OrderBy(o => o.DisplayOrder))
-                .FirstOrDefaultAsync(m => m.Id == req.MockTestId && m.Status == MockTestStatus.Published);
+                .FirstOrDefaultAsync(m => m.Id == req.MockTestId);
 
-            if (test is null) return NotFound(new { message = "Test not found or not published" });
+            if (test is null)
+                return NotFound(new { message = "Assessment not found." });
+
+            // Only Published tests are accessible to students.
+            // SuperAdmin / OrgAdmin can preview Draft tests too.
+            var callerRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+            bool isAdmin = callerRole is "SuperAdmin" or "OrgAdmin" or "Instructor";
+
+            if (test.Status != MockTestStatus.Published && !isAdmin)
+                return BadRequest(new
+                {
+                    message = "This assessment is not published yet. Please contact your administrator.",
+                    status = test.Status.ToString()
+                });
 
             if (!test.Questions.Any())
-                return BadRequest(new { message = "This test has no questions yet. Add questions before starting." });
+                return BadRequest(new { message = "This assessment has no questions yet. Add questions before starting." });
 
             var prevCount = await db.MockTestAttempts.CountAsync(a => a.MockTestId == req.MockTestId && a.StudentId == req.StudentId);
             if (prevCount >= test.MaxAttempts)
-                return BadRequest(new { message = $"Maximum {test.MaxAttempts} attempts reached" });
+                return BadRequest(new { message = $"You have used all {test.MaxAttempts} attempt(s) for this assessment." });
 
             var attempt = new MockTestAttempt
             {
