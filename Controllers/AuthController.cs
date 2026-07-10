@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace LMS.API.Controllers;
 
 [ApiController, Route("api/auth")]
-public class AuthController(LmsDbContext db, IAuthService auth, IEmailService emailService) : ControllerBase
+public class AuthController(LmsDbContext db, IAuthService auth, IEmailService emailService, ILogger<AuthController> logger) : ControllerBase
 {
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
@@ -59,7 +59,9 @@ public class AuthController(LmsDbContext db, IAuthService auth, IEmailService em
         await db.SaveChangesAsync();
 
         user = await db.Users.Include(u => u.Organization).Include(u => u.RoleAssignments).FirstAsync(u => u.Id == user.Id);
-        _ = emailService.SendWelcomeEmailAsync(user.Email, user.FirstName, org.Name);
+        // Send welcome email — fire and forget but log failures
+        try { await emailService.SendWelcomeEmailAsync(user.Email, user.FirstName, org.Name); }
+        catch (Exception ex) { logger.LogError(ex, "Welcome email failed for {Email}", user.Email); }
         return Ok(new LoginResponse(auth.GenerateJwt(user), auth.GenerateRefreshToken(), MapUser(user)));
     }
 

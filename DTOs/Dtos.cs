@@ -72,7 +72,7 @@ public record CourseDto(
     List<ModuleDto>? Modules,
     bool EnforceSequentialLessons = false
 );
-public record CreateCourseRequest(string Title, string? Description, string? ThumbnailUrl, string Level, decimal Price, bool IsFree, int? CategoryId, int? InstructorId, int OrganizationId, string? Tags, string? Language = "English", bool EnforceSequentialLessons = false);
+public record CreateCourseRequest(string Title, string? Description, string? ThumbnailUrl, string Level, decimal Price, bool IsFree, int? CategoryId, int? InstructorId, int OrganizationId, string? Tags, string? Language = "English", bool EnforceSequentialLessons = false, string? Status = null);
 public record UpdateCourseRequest(string? Title, string? Description, string? ThumbnailUrl, string? Level, string? Status, decimal? Price, bool? IsFree, int? CategoryId, string? Tags, bool? EnforceSequentialLessons = null, int? InstructorId = null);
 
 // ─── MODULE ────────────────────────────────────────────────────────────────────
@@ -179,6 +179,8 @@ public record UpdateLiveClassRequest(string? Title, string? Description, DateTim
 // ─── MOCK TEST ─────────────────────────────────────────────────────────────────
 public record MockTestDto(int Id, string Title, string? Description, string? Topic, string Difficulty, string Status, int TimeLimitMins, int TotalQuestions, int PassMarkPercent, bool RandomizeQuestions, bool ShowResultImmediately, int MaxAttempts, string? Tags, int OrganizationId, int? CourseId, DateTime CreatedAt, int AttemptCount, List<MockTestQuestionDto>? Questions);
 public record CreateMockTestRequest(string Title, string? Description, string? Topic, string Difficulty, int TimeLimitMins, int TotalQuestions, int PassMarkPercent, bool RandomizeQuestions, bool ShowResultImmediately, int MaxAttempts, string? Tags, int OrganizationId, int? CourseId, int CreatedById);
+public record LinkCourseRequest(int? CourseId); // null = unlink
+public record SetTotalQuestionsRequest(int TotalQuestions);
 public record MockTestQuestionDto(int Id, string Text, string? ImageUrl, string? Explanation, string? ExplanationImageUrl, string? FormulaLatex, string Topic, string Difficulty, string QuestionType, int Marks, int NegativeMarks, int DisplayOrder, List<MockTestOptionDto> Options);
 public record MockTestOptionDto(int Id, string Text, string? ImageUrl, bool IsCorrect, int DisplayOrder);
 public record AddMockQuestionRequest(string Text, string Topic, string Difficulty, string QuestionType, int Marks, int NegativeMarks, string? Explanation, string? ExplanationImageUrl, string? ImageUrl, string? FormulaLatex, int MockTestId, List<CreateMockOptionRequest> Options);

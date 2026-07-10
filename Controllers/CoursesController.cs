@@ -79,17 +79,14 @@ public class CoursesController(LmsDbContext db) : ControllerBase
                 Level = level,
                 Price = req.Price,
                 IsFree = req.IsFree,
-                // Nullable on both the DTO and the model — only assign when
-                // the frontend actually sent a real category/instructor.
-                // Previously this defaulted to 0 when omitted, which is not
-                // a valid foreign key and crashed SaveChangesAsync with an
-                // unhandled (and unreturned) exception.
                 CategoryId = req.CategoryId is > 0 ? req.CategoryId : null,
                 InstructorId = req.InstructorId is > 0 ? req.InstructorId : null,
                 OrganizationId = req.OrganizationId,
                 Tags = req.Tags,
                 Language = req.Language,
-                EnforceSequentialLessons = req.EnforceSequentialLessons
+                EnforceSequentialLessons = req.EnforceSequentialLessons,
+                Status = req.Status != null && Enum.TryParse<CourseStatus>(req.Status, out var createStatus)
+                    ? createStatus : CourseStatus.Draft,
             };
             db.Courses.Add(course);
             await db.SaveChangesAsync();

@@ -116,7 +116,7 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
   <div class=""wrapper"">
     <div class=""header"">
       <h1>{orgName}</h1>
-      <p>Learning Management System</p>
+      //<p>Learning Management System</p>
     </div>
     <div class=""body"">
       {content}
@@ -155,8 +155,7 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
               <h3>Course</h3>
               <p>{courseTitle}</p>
             </div>
-            <p class="text">You can start learning right now. Track your progress and complete all lessons to earn your certificate.</p>
-            <a href="#" class="btn">Start Learning →</a>
+            
             """;
         await SendAsync(to, name, $"Enrollment Confirmed: {courseTitle}", BaseTemplate("#10b981", orgName, content));
     }
@@ -255,22 +254,38 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
 
     public async Task SendExamResultAsync(string to, string name, string examTitle, int score, bool passed, string orgName)
     {
-        var badge = passed ? "<span class='badge badge-green'>PASSED ✓</span>" : "<span class='badge badge-red'>FAILED ✗</span>";
-        var msg = passed
-            ? "You've passed the exam! Your certificate will be issued shortly."
-            : "Don't give up! Review the course material and try again.";
+        var color = passed ? "#10b981" : "#ef4444";
+        var emoji = passed ? "🎉" : "📊";
+        var badge = passed
+            ? "<span class='badge badge-green'>✅ QUALIFIED</span>"
+            : "<span class='badge badge-red'>❌ NOT QUALIFIED</span>";
+        var headline = passed
+            ? $"Congratulations, {name}! You Qualified! 🎉"
+            : $"Thank You for Attending, {name}";
+        var message = passed
+            ? $"<p class='text'>You have successfully cleared the <strong>{examTitle}</strong> assessment. <strong>{orgName}</strong> will contact you shortly with details about the next round of the selection process.</p>"
+            : $"<p class='text'>Thank you for attending the <strong>{examTitle}</strong> assessment hosted by <strong>{orgName}</strong>. Unfortunately, your score did not meet the required threshold for this round. We encourage you to keep practicing and try again in future opportunities.</p>";
+        var nextSteps = passed
+            ? "<div class='card' style='border-left:4px solid #10b981;background:#f0fdf4'><h3 style='color:#065f46'>What's Next?</h3><p style='color:#065f46'>Our team will reach out to you via email or phone with further instructions. Please keep an eye on your inbox.</p></div>"
+            : "<div class='card' style='border-left:4px solid #f59e0b;background:#fffbeb'></div>";
+
         var content = $"""
-            <p class="greeting">📝 Exam Results: {examTitle}</p>
-            <p class="text">Hi {name}, your exam has been graded.</p>
-            <div class="card" style="text-align:center;">
-              <h3>Your Score</h3>
-              <p style="font-size:48px; font-weight:900; color:{(passed ? "#10b981" : "#ef4444")}">{score}%</p>
-              <p style="margin-top:8px">{badge}</p>
-            </div>
-            <p class="text">{msg}</p>
-            <a href="#" class="btn">View Results →</a>
+            <p class="greeting">{emoji} {headline}</p>
+            {message}
+            
+            {nextSteps}
+            <p class="text" style="font-size:13px; color:#999; margin-top:24px;">
+              Assessment: <strong>{examTitle}</strong><br/>
+              Conducted by: <strong>{orgName}</strong><br/>
+              Date: <strong>{DateTime.UtcNow:MMMM dd, yyyy}</strong>
+            </p>
             """;
-        await SendAsync(to, name, $"Exam Result: {examTitle} — {score}%", BaseTemplate(passed ? "#10b981" : "#ef4444", orgName, content));
+
+        var subject = passed
+            ? $"🎉 You Qualified! — {examTitle} Result ({score}%)"
+            : $"📊 Exam Result — {examTitle} ({score}%)";
+
+        await SendAsync(to, name, subject, BaseTemplate(color, orgName, content));
     }
 
     public async Task SendLiveClassNotificationAsync(string to, string name, string title, DateTime scheduledAt, int durationMins, string platform, string meetingLink, string meetingId, string meetingPassword, string courseTitle)
@@ -347,7 +362,7 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
             {(string.IsNullOrEmpty(meetingLink) ? "" : $"<a href='{meetingLink}' class='btn'>Join Interview →</a>")}
             <p class=""text"" style=""color:#555"">Tips: Be on time, test your internet connection, and keep your documents ready. Best of luck! 🍀</p>";
 
-        await  SendAsync(to, name, $"Interview Scheduled: {title} on {scheduledAt:MMM dd}", BaseTemplate("#7c3aed", "LMS Portal", content));
+        await SendAsync(to, name, $"Interview Scheduled: {title} on {scheduledAt:MMM dd}", BaseTemplate("#7c3aed", "LMS Portal", content));
     }
 
 }

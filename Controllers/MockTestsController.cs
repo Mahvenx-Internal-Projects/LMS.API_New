@@ -1,15 +1,15 @@
 using LMS.API.Data;
 using LMS.API.DTOs;
 using LMS.API.Models;
+using LMS.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MiniExcelLibs;
 
 namespace LMS.API.Controllers;
 
 [ApiController, Route("api/mocktests")]
-public class MockTestsController(LmsDbContext db) : ControllerBase
+public class MockTestsController(LmsDbContext db, IEmailService emailService, ILogger<MockTestsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] int? orgId, [FromQuery] int? courseId, [FromQuery] string? status)
@@ -99,6 +99,30 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         return Ok();
     }
 
+    // ── Reset questions shown per attempt ──────────────────────
+    [HttpPatch("{id}/set-total-questions")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> SetTotalQuestions(int id, [FromBody] SetTotalQuestionsRequest req)
+    {
+        var m = await db.MockTests.FindAsync(id);
+        if (m is null) return NotFound();
+        m.TotalQuestions = req.TotalQuestions;
+        await db.SaveChangesAsync();
+        return Ok(new { id, totalQuestions = req.TotalQuestions, message = $"Now showing {req.TotalQuestions} questions per attempt." });
+    }
+
+    // ── Link / unlink exam to a course (PATCH only changes CourseId) ──
+    [HttpPatch("{id}/link-course")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> LinkCourse(int id, [FromBody] LinkCourseRequest req)
+    {
+        var m = await db.MockTests.FindAsync(id);
+        if (m is null) return NotFound();
+        m.CourseId = req.CourseId; // null = unlink
+        await db.SaveChangesAsync();
+        return Ok(new { courseId = req.CourseId, message = req.CourseId.HasValue ? "Linked." : "Unlinked." });
+    }
+
     [HttpDelete("{id}")]
     [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
     public async Task<IActionResult> Delete(int id)
@@ -154,13 +178,12 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
 
-        // Keep TotalQuestions in sync with actual question count so Start
-        // never silently returns 0 questions for a test that has some.
+        // If TotalQuestions was never set (0), auto-set it to 20 (default per-exam count).
+        // If admin already set a specific value (e.g. 20), keep it — don't overwrite with full bank size.
         var test = await db.MockTests.FindAsync(testId);
-        if (test is not null)
+        if (test is not null && test.TotalQuestions == 0)
         {
-            var actualCount = await db.MockTestQuestions.CountAsync(x => x.MockTestId == testId);
-            if (test.TotalQuestions < actualCount) test.TotalQuestions = actualCount;
+            test.TotalQuestions = 20; // default: show 20 random questions per attempt
             await db.SaveChangesAsync();
         }
 
@@ -217,6 +240,9 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
             var test = await db.MockTests
                 .Include(m => m.Questions.OrderBy(q => q.DisplayOrder))
                     .ThenInclude(q => q.Options.OrderBy(o => o.DisplayOrder))
+                .Include(m => m.Questions)
+                    .ThenInclude(q => q.CodingQuestion!)
+                        .ThenInclude(cq => cq.TestCases.OrderBy(t => t.DisplayOrder))
                 .FirstOrDefaultAsync(m => m.Id == req.MockTestId);
 
             if (test is null)
@@ -251,9 +277,11 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
             db.MockTestAttempts.Add(attempt);
             await db.SaveChangesAsync();
 
-            // Guard against TotalQuestions being 0/unset — fall back to using
-            // all available questions rather than returning an empty test.
-            var takeCount = test.TotalQuestions > 0 ? test.TotalQuestions : test.Questions.Count;
+            // TotalQuestions=0 means "not configured" — default to 20 random questions.
+            // Never serve the entire question bank to the student.
+            var takeCount = test.TotalQuestions > 0
+                ? Math.Min(test.TotalQuestions, test.Questions.Count)
+                : Math.Min(20, test.Questions.Count);
 
             var questions = test.RandomizeQuestions
                 ? test.Questions.OrderBy(_ => Guid.NewGuid()).Take(takeCount).ToList()
@@ -275,7 +303,24 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
                     q.FormulaLatex,
                     Difficulty = q.Difficulty.ToString(),
                     QuestionType = q.QuestionType.ToString(),
-                    options = q.Options.Select(o => new { o.Id, o.Text, o.ImageUrl })
+                    options = q.Options.Select(o => new { o.Id, o.Text, o.ImageUrl }),
+                    // Include coding question details so frontend can render the problem + compiler
+                    codingQuestion = q.CodingQuestion == null ? null : new
+                    {
+                        q.CodingQuestion.Id,
+                        q.CodingQuestion.ProblemStatement,
+                        q.CodingQuestion.Constraints,
+                        q.CodingQuestion.SampleInput,
+                        q.CodingQuestion.SampleOutput,
+                        q.CodingQuestion.StarterCodePython,
+                        q.CodingQuestion.StarterCodeCpp,
+                        q.CodingQuestion.StarterCodeJava,
+                        q.CodingQuestion.StarterCodeJs,
+                        // Only send visible (non-hidden) test cases to student
+                        testCases = q.CodingQuestion.TestCases
+                            .Where(t => !t.IsHidden)
+                            .Select(t => new { t.Input, t.ExpectedOutput, t.DisplayOrder })
+                    }
                 })
             });
         }
@@ -298,7 +343,18 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         if (attempt.Status != MockAttemptStatus.InProgress)
             return BadRequest(new { message = "Already submitted" });
 
-        var questions = attempt.MockTest.Questions.ToList();
+        // Only grade the questions that were actually served to the student.
+        // req.Answers contains one entry per question shown — use those question IDs
+        // to filter, so we never divide by 220 when only 20 were shown.
+        var allQuestions = attempt.MockTest.Questions.ToList();
+        var answeredQuestionIds = req.Answers.Select(a => a.QuestionId).ToHashSet();
+        var questions = allQuestions
+            .Where(q => answeredQuestionIds.Contains(q.Id))
+            .ToList();
+
+        // If student skipped all (submitted with 0 answers), fall back to all shown questions
+        if (questions.Count == 0) questions = allQuestions;
+
         int totalMarks = questions.Sum(q => q.Marks);
         int earned = 0, negative = 0;
         var topicData = new Dictionary<string, (int total, int correct)>();
@@ -396,7 +452,66 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         attempt.Rank = allScores.IndexOf(attempt.Id) + 1;
         await db.SaveChangesAsync();
 
-        return Ok(new { scorePct, passed, readiness, net, totalMarks, negativeMarks = negative, rank = attempt.Rank, attemptId = attempt.Id });
+        // Send exam result email after 30-minute delay (fire and forget)
+        var studentEmail = (await db.Users.Include(u => u.Organization)
+            .FirstOrDefaultAsync(u => u.Id == attempt.UserId));
+        if (studentEmail?.Email is not null)
+        {
+            var emailTo = studentEmail.Email;
+            var emailName = studentEmail.FirstName;
+            var emailOrg = studentEmail.Organization?.Name ?? "Your Organization";
+            var examTitle = attempt.MockTest.Title;
+            var finalScore = scorePct;
+            var finalPassed = passed;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(30));
+                    await emailService.SendExamResultAsync(emailTo, emailName, examTitle, finalScore, finalPassed, emailOrg);
+                    logger.LogInformation("Exam result email sent to {Email} after 30-min delay", emailTo);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Delayed exam result email failed for {Email}", emailTo);
+                }
+            });
+        }
+
+        var correctCount = questions.Count(q => { var ans = req.Answers.FirstOrDefault(a => a.QuestionId == q.Id); if (ans == null) return false; var correctOpt = q.Options.FirstOrDefault(o => o.IsCorrect); return correctOpt?.Id == ans.SelectedOptionId; });
+        var incorrectCount = questions.Count(q => req.Answers.Any(a => a.QuestionId == q.Id)) - correctCount;
+
+        return Ok(new { scorePct, passed, readiness, net, totalMarks, negativeMarks = negative, rank = attempt.Rank, attemptId = attempt.Id, correct = correctCount, incorrect = Math.Max(0, incorrectCount), totalQuestions = questions.Count });
+    }
+
+    // ─── Get student's latest attempt for a specific test ──────
+    [HttpGet("{testId}/my-attempt")]
+    public async Task<IActionResult> GetMyAttempt(int testId, [FromQuery] int studentId)
+    {
+        var attempt = await db.MockTestAttempts
+            .Where(a => a.MockTestId == testId && a.StudentId == studentId)
+            .OrderByDescending(a => a.StartedAt)
+            .FirstOrDefaultAsync();
+
+        if (attempt is null) return NotFound(new { message = "No previous attempt found" });
+
+        // Return same shape as submit response so frontend can show result directly
+        var test = await db.MockTests.FindAsync(testId);
+        return Ok(new
+        {
+            attemptId = attempt.Id,
+            scorePct = attempt.ScorePercent,
+            net = attempt.MarksObtained,
+            totalMarks = attempt.TotalMarks,
+            correct = attempt.MarksObtained,   // approximate
+            incorrect = 0,
+            passed = attempt.Passed,
+            readiness = attempt.InterviewReadiness,
+            timeTaken = attempt.TimeTakenSecs,
+            attemptNumber = attempt.AttemptNumber,
+            completedAt = attempt.CompletedAt,
+            testTitle = test?.Title,
+        });
     }
 
     // ─── Attempt result detail ─────────────────────────────────
@@ -466,8 +581,14 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
 
         var topicAgg = attempts.SelectMany(a => a.TopicScores)
             .GroupBy(t => t.Topic)
-            .Select(g => new TopicScoreDto(g.Key, g.Sum(x => x.TotalQuestions), g.Sum(x => x.Correct),
-                g.Sum(x => x.TotalQuestions) > 0 ? (int)Math.Round(g.Sum(x => x.Correct) * 100.0 / g.Sum(x => x.TotalQuestions)) : 0))
+            .Select(g => {
+                var correct = g.Sum(x => x.Correct);
+                // Use Correct count as proxy for total shown — TopicScore.TotalQuestions
+                // may be corrupted (220 instead of 20) in older attempts.
+                // ScorePercent is already stored correctly per topic at submit time.
+                var avgScore = g.Count() > 0 ? (int)Math.Round(g.Average(x => x.ScorePercent)) : 0;
+                return new TopicScoreDto(g.Key, correct, correct, avgScore);
+            })
             .ToList();
 
         return Ok(new MockTestAnalysisDto(
@@ -523,7 +644,7 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         try
         {
             using var stream = file.OpenReadStream();
-            var rows = stream.Query(useHeaderRow: true).Cast<IDictionary<string, object>>().ToList();
+            var rows = MiniExcel.Query(stream, useHeaderRow: true).Cast<IDictionary<string, object>>().ToList();
 
             var questions = new List<MockTestQuestion>();
             var errors = new List<string>();
