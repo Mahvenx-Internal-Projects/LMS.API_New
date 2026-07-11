@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiniExcelLibs;
 
+
 namespace LMS.API.Controllers;
 
 [ApiController, Route("api/mocktests")]
@@ -478,9 +479,9 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
             {
                 try
                 {
-                    //await Task.Delay(TimeSpan.FromMinutes(30));
-                    //await emailService.SendExamResultAsync(emailTo, emailName, examTitle, finalScore, finalPassed, emailOrg);
-                    //logger.LogInformation("Exam result email sent to {Email} after 30-min delay", emailTo);
+                    await Task.Delay(TimeSpan.FromMinutes(30));
+                    await emailService.SendExamResultAsync(emailTo, emailName, examTitle, finalScore, finalPassed, emailOrg);
+                    logger.LogInformation("Exam result email sent to {Email} after 30-min delay", emailTo);
                 }
                 catch (Exception ex)
                 {
@@ -526,6 +527,108 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
     }
 
     // ─── Attempt result detail ─────────────────────────────────
+    // ─── Admin: all attempts for an exam (for manual paper correction) ─
+    [HttpGet("{testId}/attempts")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> GetAllAttempts(int testId)
+    {
+        var attempts = await db.MockTestAttempts
+            .Include(a => a.Student)
+            .Include(a => a.Answers)
+                .ThenInclude(ans => ans.Question)
+                    .ThenInclude(q => q.CodingQuestion!)
+                        .ThenInclude(cq => cq.TestCases)
+            .Include(a => a.Answers)
+                .ThenInclude(ans => ans.Question)
+                    .ThenInclude(q => q.Options)
+            .Where(a => a.MockTestId == testId)
+            .OrderByDescending(a => a.StartedAt)
+            .ToListAsync();
+
+        var result = attempts.Select(a => new
+        {
+            attemptId = a.Id,
+            studentId = a.StudentId,
+            studentName = $"{a.Student.FirstName} {a.Student.LastName}",
+            studentEmail = a.Student.Email,
+            startedAt = a.StartedAt,
+            completedAt = a.CompletedAt,
+            timeTakenSecs = a.TimeTakenSecs,
+            status = a.Status.ToString(),
+            attemptNumber = a.AttemptNumber,
+            scorePercent = a.ScorePercent,
+            passed = a.Passed,
+            marksObtained = a.MarksObtained,
+            totalMarks = a.TotalMarks,
+            // MCQ answers
+            mcqAnswers = a.Answers
+                .Where(ans => ans.Question.QuestionType != MockQuestionType.Coding)
+                .Select(ans => new {
+                    questionId = ans.QuestionId,
+                    questionText = ans.Question.Text,
+                    topic = ans.Question.Topic,
+                    isCorrect = ans.IsCorrect,
+                    isSkipped = ans.IsSkipped,
+                    marksAwarded = ans.MarksAwarded,
+                    selectedOption = ans.SelectedOption?.Text,
+                    correctOption = ans.Question.Options.FirstOrDefault(o => o.IsCorrect)?.Text
+                }),
+            // Coding questions shown to this student
+            codingQuestions = a.Answers
+                .Where(ans => ans.Question.QuestionType == MockQuestionType.Coding)
+                .Select(ans => new {
+                    questionId = ans.QuestionId,
+                    title = ans.Question.Text,
+                    topic = ans.Question.Topic,
+                    marks = ans.Question.Marks,
+                    displayOrder = ans.Question.DisplayOrder,
+                    problemStatement = ans.Question.CodingQuestion != null ? ans.Question.CodingQuestion.ProblemStatement : "",
+                    constraints = ans.Question.CodingQuestion != null ? ans.Question.CodingQuestion.Constraints : "",
+                    sampleInput = ans.Question.CodingQuestion != null ? ans.Question.CodingQuestion.SampleInput : "",
+                    sampleOutput = ans.Question.CodingQuestion != null ? ans.Question.CodingQuestion.SampleOutput : "",
+                    // All test cases so admin can verify manually
+                    testCases = ans.Question.CodingQuestion != null
+                        ? ans.Question.CodingQuestion.TestCases.OrderBy(t => t.DisplayOrder).Select(t => new {
+                            t.Input,
+                            t.ExpectedOutput,
+                            t.IsHidden
+                        })
+                        : Enumerable.Empty<object>()
+                })
+        });
+
+        return Ok(result);
+    }
+
+    // ─── Admin: mark coding question manually ──────────────────
+    [HttpPatch("attempt/{attemptId}/mark-coding")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> MarkCodingQuestion(int attemptId, [FromBody] MarkCodingRequest req)
+    {
+        var attempt = await db.MockTestAttempts
+            .Include(a => a.Answers)
+            .FirstOrDefaultAsync(a => a.Id == attemptId);
+        if (attempt is null) return NotFound();
+
+        var answer = attempt.Answers.FirstOrDefault(a => a.QuestionId == req.QuestionId);
+        if (answer is null) return NotFound(new { message = "Answer not found for this attempt" });
+
+        answer.MarksAwarded = req.MarksAwarded;
+        answer.IsCorrect = req.MarksAwarded > 0;
+
+        // Recalculate total marks and score
+        var allAnswers = attempt.Answers.ToList();
+        attempt.MarksObtained = (int)allAnswers.Sum(a => a.MarksAwarded);
+        if (attempt.TotalMarks > 0)
+            attempt.ScorePercent = (int)Math.Round(attempt.MarksObtained * 100.0 / attempt.TotalMarks);
+
+        var test = await db.MockTests.FindAsync(attempt.MockTestId);
+        attempt.Passed = test != null && attempt.ScorePercent >= test.PassMarkPercent;
+
+        await db.SaveChangesAsync();
+        return Ok(new { message = "Marks updated", marksObtained = attempt.MarksObtained, scorePercent = attempt.ScorePercent, passed = attempt.Passed });
+    }
+
     [HttpGet("attempt/{attemptId}")]
     public async Task<IActionResult> GetAttemptResult(int attemptId)
     {
