@@ -478,9 +478,9 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromMinutes(30));
-                    await emailService.SendExamResultAsync(emailTo, emailName, examTitle, finalScore, finalPassed, emailOrg);
-                    logger.LogInformation("Exam result email sent to {Email} after 30-min delay", emailTo);
+                    //await Task.Delay(TimeSpan.FromMinutes(30));
+                    //await emailService.SendExamResultAsync(emailTo, emailName, examTitle, finalScore, finalPassed, emailOrg);
+                    //logger.LogInformation("Exam result email sent to {Email} after 30-min delay", emailTo);
                 }
                 catch (Exception ex)
                 {

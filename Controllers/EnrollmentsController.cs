@@ -239,7 +239,7 @@ public class ExamsController(LmsDbContext db, IEmailService emailSvc) : Controll
         var examUser = await db.Users.FindAsync(attempt.UserId);
         var examOrg = examUser is not null ? (await db.Organizations.FindAsync(examUser.OrganizationId))?.Name ?? "" : "";
         if (examUser is not null)
-            _ = emailSvc.SendExamResultAsync(examUser.Email, examUser.FirstName, attempt.Exam.Title, attempt.Score ?? 0, attempt.Passed, examOrg);
+          //  _ = emailSvc.SendExamResultAsync(examUser.Email, examUser.FirstName, attempt.Exam.Title, attempt.Score ?? 0, attempt.Passed, examOrg);
 
         // Send certificate email if passed
         if (attempt.Passed && examUser is not null)

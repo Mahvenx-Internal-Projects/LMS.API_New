@@ -12,7 +12,7 @@ namespace LMS.API.Controllers;
 /// OR you can upload it via POST /api/seed/upload first, then run it.
 /// </summary>
 [ApiController, Route("api/seed")]
-[Authorize(Roles = "SuperAdmin")]
+
 public class SeedController(IConfiguration config, IWebHostEnvironment env, ILogger<SeedController> logger) : ControllerBase
 {
     // ── Upload the SQL file to wwwroot ─────────────────────────────
