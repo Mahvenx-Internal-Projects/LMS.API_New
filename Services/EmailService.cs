@@ -133,14 +133,13 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
     public async Task SendWelcomeEmailAsync(string to, string name, string orgName)
     {
         var content = $"""
-            <p class="greeting">👋 Welcome to {orgName}, {name}!</p>
-            <p class="text">Your account has been created successfully. You're now part of a community of learners committed to growing their skills.</p>
+            <p class="greeting">👋 Welcome to {orgName}!</p>
+            <p class="text">Your account has been created successfully.</p>
             <div class="card">
               <h3>Your account</h3>
               <p>{to}</p>
             </div>
-            <p class="text">Start exploring our course catalog and enroll in courses that match your goals.</p>
-            <a href="#" class="btn">Browse Courses →</a>
+           
             <p class="text" style="margin-top: 24px; font-size: 13px; color: #999;">If you didn't create this account, please ignore this email.</p>
             """;
         await SendAsync(to, name, $"Welcome to {orgName}! 🎓", BaseTemplate("#f97316", orgName, content));
