@@ -145,14 +145,17 @@ public class DashboardController(LmsDbContext db) : ControllerBase
         var completed = await db.Enrollments.CountAsync(e => e.Course.OrganizationId == orgId && e.Status == EnrollmentStatus.Completed);
         var topCourses = await db.Courses
             .Where(c => c.OrganizationId == orgId)
-            .Select(c => new CourseStatsDto(
-                c.Id, c.Title,
-                c.Enrollments.Count,
-                c.Enrollments.Count > 0 ? c.Enrollments.Count(e => e.Status == EnrollmentStatus.Completed) * 100.0 / c.Enrollments.Count : 0,
-                c.Ratings.Count > 0 ? c.Ratings.Average(r => r.Rating) : 0
-            ))
-            .OrderByDescending(c => c.Enrollments)
-            .Take(5)
+            .Select(c => new {
+                id = c.Id,
+                title = c.Title,
+                enrollments = c.Enrollments.Count(),
+                completionRate = c.Enrollments.Any()
+                    ? c.Enrollments.Count(e => e.Status == EnrollmentStatus.Completed) * 100.0 / c.Enrollments.Count()
+                    : 0.0,
+                averageRating = c.Ratings.Any() ? c.Ratings.Average(r => (double)r.Rating) : 0.0
+            })
+            .OrderByDescending(c => c.enrollments)
+            .Take(10)
             .ToListAsync();
 
         // Last 6 months enrollment activity
@@ -200,6 +203,131 @@ public class DashboardController(LmsDbContext db) : ControllerBase
             recentStudents,
             revenue = (double)(await db.OrderItems.Where(oi => oi.Course.OrganizationId == orgId && oi.Order.Status == OrderStatus.Paid).SumAsync(oi => oi.Price)),
             activeStudents = await db.LessonProgresses.Where(p => p.UpdatedAt >= DateTime.UtcNow.AddDays(-7) && p.Lesson.Module.Course.OrganizationId == orgId).Select(p => p.UserId).Distinct().CountAsync()
+        });
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // All students in org — with enrollment count, courses, exam status
+    // GET /api/dashboard/org/{orgId}/students
+    // ════════════════════════════════════════════════════════════════════════
+    [HttpGet("org/{orgId}/students")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> OrgStudents(int orgId)
+    {
+        var students = await db.Users
+            .Where(u => u.OrganizationId == orgId && u.Role == UserRole.Student)
+            .OrderByDescending(u => u.CreatedAt)
+            .Select(u => new {
+                id = u.Id,
+                name = $"{u.FirstName} {u.LastName}",
+                email = u.Email,
+                phone = u.PhoneNumber,
+                joinedAt = u.CreatedAt,
+                isActive = u.IsActive,
+                // Courses enrolled
+                enrollmentCount = db.Enrollments.Count(e => e.UserId == u.Id),
+                completedCount = db.Enrollments.Count(e => e.UserId == u.Id && e.Status == EnrollmentStatus.Completed),
+                avgProgress = db.Enrollments.Where(e => e.UserId == u.Id).Any()
+                    ? db.Enrollments.Where(e => e.UserId == u.Id).Average(e => (double)e.ProgressPercent) : 0,
+                // Latest exam
+                latestExam = db.MockTestAttempts
+                    .Where(a => a.UserId == u.Id)
+                    .OrderByDescending(a => a.StartedAt)
+                    .Select(a => new {
+                        examTitle = a.MockTest.Title,
+                        scorePercent = a.ScorePercent,
+                        passed = a.Passed,
+                        completedAt = a.CompletedAt
+                    }).FirstOrDefault()
+            })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            orgId,
+            totalStudents = students.Count,
+            activeStudents = students.Count(s => s.isActive),
+            students
+        });
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Full report for ONE student — all enrollments + watch % + exam marks
+    // GET /api/dashboard/org/{orgId}/students/{studentId}/report
+    // ════════════════════════════════════════════════════════════════════════
+    [HttpGet("org/{orgId}/students/{studentId}/report")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> StudentReport(int orgId, int studentId)
+    {
+        var student = await db.Users.FindAsync(studentId);
+        if (student is null || student.OrganizationId != orgId)
+            return NotFound(new { message = "Student not found in this organisation" });
+
+        // All enrollments with course details + watch progress
+        var enrollments = await db.Enrollments
+            .Include(e => e.Course)
+            .Where(e => e.UserId == studentId && e.Course.OrganizationId == orgId)
+            .Select(e => new {
+                courseId = e.CourseId,
+                courseTitle = e.Course.Title,
+                enrolledAt = e.EnrolledAt,
+                status = e.Status.ToString(),
+                progressPercent = e.ProgressPercent,
+                completedAt = e.CompletedAt,
+                totalWatchSecs = e.TotalWatchSeconds,
+                // Total lesson count in course
+                totalLessons = db.Lessons.Count(l => l.Module.CourseId == e.CourseId),
+                // Lessons watched
+                watchedLessons = db.LessonProgresses.Count(p => p.UserId == studentId && p.Lesson.Module.CourseId == e.CourseId && p.IsCompleted),
+                // All exam attempts for this course
+                examAttempts = db.MockTestAttempts
+                    .Where(a => a.UserId == studentId && a.MockTest.CourseId == e.CourseId)
+                    .OrderByDescending(a => a.StartedAt)
+                    .Select(a => new {
+                        attemptId = a.Id,
+                        examTitle = a.MockTest.Title,
+                        examId = a.MockTestId,
+                        attemptNo = a.AttemptNumber,
+                        scorePercent = a.ScorePercent,
+                        marksObtained = a.MarksObtained,
+                        totalMarks = a.TotalMarks,
+                        passed = a.Passed,
+                        startedAt = a.StartedAt,
+                        completedAt = a.CompletedAt,
+                        timeTakenSecs = a.TimeTakenSecs,
+                        readiness = a.InterviewReadiness
+                    }).ToList()
+            })
+            .ToListAsync();
+
+        // Overall stats
+        var totalWatchSecs = await db.LessonProgresses.Where(p => p.UserId == studentId).SumAsync(p => p.WatchedSeconds);
+        var totalExams = await db.MockTestAttempts.CountAsync(a => a.UserId == studentId);
+        var passedExams = await db.MockTestAttempts.CountAsync(a => a.UserId == studentId && a.Passed);
+        var avgExamScore = await db.MockTestAttempts.Where(a => a.UserId == studentId).AnyAsync()
+            ? await db.MockTestAttempts.Where(a => a.UserId == studentId).AverageAsync(a => (double)a.ScorePercent) : 0;
+
+        return Ok(new
+        {
+            student = new
+            {
+                id = student.Id,
+                name = $"{student.FirstName} {student.LastName}",
+                email = student.Email,
+                phone = student.PhoneNumber,
+                joinedAt = student.CreatedAt,
+                isActive = student.IsActive
+            },
+            summary = new
+            {
+                totalEnrollments = enrollments.Count,
+                completedCourses = enrollments.Count(e => e.status == "Completed"),
+                totalWatchMinutes = totalWatchSecs / 60,
+                totalExamAttempts = totalExams,
+                passedExams,
+                avgExamScore = Math.Round(avgExamScore, 1)
+            },
+            enrollments
         });
     }
 
