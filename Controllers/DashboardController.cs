@@ -204,8 +204,55 @@ public class DashboardController(LmsDbContext db) : ControllerBase
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Student — personal learning dashboard
+    // Course-wise enrolled students list — click a course to see who enrolled
+    // GET /api/dashboard/org/{orgId}/course/{courseId}/students
     // ════════════════════════════════════════════════════════════════════════
+    [HttpGet("org/{orgId}/course/{courseId}/students")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> CourseStudents(int orgId, int courseId)
+    {
+        var course = await db.Courses.FindAsync(courseId);
+        if (course is null) return NotFound();
+
+        var students = await db.Enrollments
+            .Include(e => e.User)
+            .Where(e => e.CourseId == courseId && e.Course.OrganizationId == orgId)
+            .OrderByDescending(e => e.EnrolledAt)
+            .Select(e => new {
+                enrollmentId = e.Id,
+                userId = e.UserId,
+                name = $"{e.User.FirstName} {e.User.LastName}",
+                email = e.User.Email,
+                phone = e.User.PhoneNumber,
+                enrolledAt = e.EnrolledAt,
+                status = e.Status.ToString(),
+                progressPercent = e.ProgressPercent,
+                completedAt = e.CompletedAt,
+                // Exam attempt for this course
+                examAttempt = db.MockTestAttempts
+                    .Where(a => a.UserId == e.UserId && a.MockTest.CourseId == courseId)
+                    .OrderByDescending(a => a.StartedAt)
+                    .Select(a => new {
+                        attemptId = a.Id,
+                        scorePercent = a.ScorePercent,
+                        passed = a.Passed,
+                        completedAt = a.CompletedAt,
+                        status = a.Status.ToString()
+                    })
+                    .FirstOrDefault()
+            })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            courseId,
+            courseTitle = course.Title,
+            totalEnrolled = students.Count,
+            completed = students.Count(s => s.status == "Completed"),
+            passed = students.Count(s => s.examAttempt != null && s.examAttempt.passed),
+            students
+        });
+    }
     [HttpGet("student/{userId}")]
     public async Task<IActionResult> StudentDashboard(int userId)
     {

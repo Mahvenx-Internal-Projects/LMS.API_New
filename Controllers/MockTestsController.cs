@@ -1,862 +1,380 @@
 using LMS.API.Data;
-using LMS.API.DTOs;
 using LMS.API.Models;
-using LMS.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MiniExcelLibs;
-
+using MySqlConnector;
 
 namespace LMS.API.Controllers;
 
-[ApiController, Route("api/mocktests")]
-public class MockTestsController(LmsDbContext db, IEmailService emailService, ILogger<MockTestsController> logger) : ControllerBase
+[ApiController, Route("api/seed")]
+[Authorize(Roles = "SuperAdmin")]
+public class SeedController(IConfiguration config, IWebHostEnvironment env, ILogger<SeedController> logger) : ControllerBase
 {
-    [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] int? orgId, [FromQuery] int? courseId, [FromQuery] string? status)
+    // ── Upload SQL file ────────────────────────────────────────────
+    [HttpPost("upload")]
+    public async Task<IActionResult> Upload(IFormFile file)
     {
-        var q = db.MockTests.Include(m => m.CreatedBy).Include(m => m.Course).AsQueryable();
-        if (orgId.HasValue) q = q.Where(m => m.OrganizationId == orgId.Value);
-        if (courseId.HasValue) q = q.Where(m => m.CourseId == courseId.Value);
+        if (file is null || !file.FileName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Please upload a .sql file" });
 
-        var isStaff = User.IsInRole("SuperAdmin") || User.IsInRole("OrgAdmin") || User.IsInRole("Instructor");
+        var wwwroot = env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        Directory.CreateDirectory(wwwroot);
+        var dest = Path.Combine(wwwroot, "seed_assessments_final.sql");
 
-        if (!string.IsNullOrEmpty(status) && Enum.TryParse<MockTestStatus>(status, out var st))
-        {
-            q = q.Where(m => m.Status == st);
-        }
-        else if (!isStaff)
-        {
-            q = q.Where(m => m.Status == MockTestStatus.Published);
-        }
-        // staff with no explicit filter: see ALL statuses, including Draft
+        using var fs = System.IO.File.Create(dest);
+        await file.CopyToAsync(fs);
 
-        var list = await q.Include(m => m.Attempts).OrderByDescending(m => m.CreatedAt).ToListAsync();
-        return Ok(list.Select(m => MapTest(m, false)));
+        var sizeKb = Math.Round(file.Length / 1024.0, 1);
+        logger.LogInformation("Seed SQL uploaded: {Path} ({Size} KB)", dest, sizeKb);
+        return Ok(new { message = $"File uploaded ({sizeKb} KB). Ready to run.", path = dest });
     }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> Get(int id)
+    // ── Run SQL file ───────────────────────────────────────────────
+    [HttpPost("run")]
+    public async Task<IActionResult> Run()
     {
-        var m = await db.MockTests
-            .Include(m => m.CreatedBy).Include(m => m.Course)
-            .Include(m => m.Questions.OrderBy(q => q.DisplayOrder))
-                .ThenInclude(q => q.Options.OrderBy(o => o.DisplayOrder))
-            .Include(m => m.Attempts)
-            .FirstOrDefaultAsync(m => m.Id == id);
-        return m is null ? NotFound() : Ok(MapTest(m, true));
-    }
+        var wwwroot = env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        var sqlPath = Path.Combine(wwwroot, "seed_assessments_final.sql");
 
-    [HttpPost]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> Create([FromBody] CreateMockTestRequest req)
-    {
-        if (!Enum.TryParse<MockTestDifficulty>(req.Difficulty, out var diff)) diff = MockTestDifficulty.Mixed;
-        var m = new MockTest
-        {
-            Title = req.Title,
-            Description = req.Description,
-            Topic = req.Topic,
-            Difficulty = diff,
-            TimeLimitMins = req.TimeLimitMins,
-            TotalQuestions = req.TotalQuestions,
-            PassMarkPercent = req.PassMarkPercent,
-            RandomizeQuestions = req.RandomizeQuestions,
-            ShowResultImmediately = req.ShowResultImmediately,
-            MaxAttempts = req.MaxAttempts,
-            Tags = req.Tags,
-            OrganizationId = req.OrganizationId,
-            CourseId = req.CourseId,
-            CreatedById = req.CreatedById
-        };
-        db.MockTests.Add(m);
-        await db.SaveChangesAsync();
-        return Ok(new { m.Id });
-    }
-
-    [HttpPut("{id}")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> Update(int id, [FromBody] CreateMockTestRequest req)
-    {
-        var m = await db.MockTests.FindAsync(id);
-        if (m is null) return NotFound();
-        if (!Enum.TryParse<MockTestDifficulty>(req.Difficulty, out var diff)) diff = MockTestDifficulty.Mixed;
-        m.Title = req.Title; m.Description = req.Description; m.Topic = req.Topic;
-        m.Difficulty = diff; m.TimeLimitMins = req.TimeLimitMins;
-        m.TotalQuestions = req.TotalQuestions; m.PassMarkPercent = req.PassMarkPercent;
-        m.RandomizeQuestions = req.RandomizeQuestions; m.Tags = req.Tags;
-        await db.SaveChangesAsync();
-        return NoContent();
-    }
-
-    [HttpPut("{id}/publish")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> Publish(int id)
-    {
-        var m = await db.MockTests.FindAsync(id);
-        if (m is null) return NotFound();
-        m.Status = MockTestStatus.Published;
-        await db.SaveChangesAsync();
-        return Ok();
-    }
-
-    // ── Reset questions shown per attempt ──────────────────────
-    [HttpPatch("{id}/set-total-questions")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> SetTotalQuestions(int id, [FromBody] SetTotalQuestionsRequest req)
-    {
-        var m = await db.MockTests.FindAsync(id);
-        if (m is null) return NotFound();
-        m.TotalQuestions = req.TotalQuestions;
-        await db.SaveChangesAsync();
-        return Ok(new { id, totalQuestions = req.TotalQuestions, message = $"Now showing {req.TotalQuestions} questions per attempt." });
-    }
-
-    // ── Link / unlink exam to a course (PATCH only changes CourseId) ──
-    [HttpPatch("{id}/link-course")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> LinkCourse(int id, [FromBody] LinkCourseRequest req)
-    {
-        var m = await db.MockTests.FindAsync(id);
-        if (m is null) return NotFound();
-        m.CourseId = req.CourseId; // null = unlink
-        await db.SaveChangesAsync();
-        return Ok(new { courseId = req.CourseId, message = req.CourseId.HasValue ? "Linked." : "Unlinked." });
-    }
-
-    [HttpDelete("{id}")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> Delete(int id)
-    {
-        var m = await db.MockTests.FindAsync(id);
-        if (m is null) return NotFound();
-        m.Status = MockTestStatus.Archived;
-        await db.SaveChangesAsync();
-        return NoContent();
-    }
-
-    // ─── Questions ─────────────────────────────────────────────
-    [HttpPost("{testId}/questions")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> AddQuestion(int testId, [FromBody] AddMockQuestionRequest req)
-    {
-        if (!Enum.TryParse<MockTestDifficulty>(req.Difficulty, out var diff)) diff = MockTestDifficulty.Medium;
-        if (!Enum.TryParse<MockQuestionType>(req.QuestionType, out var qType)) qType = MockQuestionType.SingleChoice;
-
-        var q = new MockTestQuestion
-        {
-            Text = req.Text,
-            Topic = req.Topic,
-            Difficulty = diff,
-            QuestionType = qType,
-            Marks = req.Marks,
-            NegativeMarks = req.NegativeMarks,
-            Explanation = req.Explanation,
-            ExplanationImageUrl = req.ExplanationImageUrl,
-            ImageUrl = req.ImageUrl,
-            FormulaLatex = req.FormulaLatex,
-            MockTestId = testId,
-            DisplayOrder = await db.MockTestQuestions.CountAsync(x => x.MockTestId == testId)
-        };
-        db.MockTestQuestions.Add(q);
-        await db.SaveChangesAsync();
-
-        foreach (var (opt, idx) in req.Options.Select((o, i) => (o, i)))
-            db.MockTestOptions.Add(new MockTestOption
+        if (!System.IO.File.Exists(sqlPath))
+            return NotFound(new
             {
-                Text = opt.Text,
-                IsCorrect = opt.IsCorrect,
-                ImageUrl = opt.ImageUrl,
-                QuestionId = q.Id,
-                DisplayOrder = idx
+                message = "Seed file not found. Upload it first via POST /api/seed/upload",
+                expectedPath = sqlPath
             });
 
-        if (qType == MockQuestionType.TrueFalse && !req.Options.Any())
-        {
-            db.MockTestOptions.Add(new MockTestOption { Text = "True", IsCorrect = false, QuestionId = q.Id, DisplayOrder = 0 });
-            db.MockTestOptions.Add(new MockTestOption { Text = "False", IsCorrect = false, QuestionId = q.Id, DisplayOrder = 1 });
-        }
+        var connStr = config.GetConnectionString("DefaultConnection")!;
+        var stats = new SeedStats();
 
-        await db.SaveChangesAsync();
-
-        // If TotalQuestions was never set (0), auto-set it to 20 (default per-exam count).
-        // If admin already set a specific value (e.g. 20), keep it — don't overwrite with full bank size.
-        var test = await db.MockTests.FindAsync(testId);
-        if (test is not null && test.TotalQuestions == 0)
-        {
-            test.TotalQuestions = 20; // default: show 20 random questions per attempt
-            await db.SaveChangesAsync();
-        }
-
-        return Ok(new { q.Id });
-    }
-
-    [HttpPut("questions/{questionId}")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> UpdateQuestion(int questionId, [FromBody] AddMockQuestionRequest req)
-    {
-        var q = await db.MockTestQuestions.Include(q => q.Options).FirstOrDefaultAsync(q => q.Id == questionId);
-        if (q is null) return NotFound();
-
-        if (!Enum.TryParse<MockTestDifficulty>(req.Difficulty, out var diff)) diff = MockTestDifficulty.Medium;
-        if (!Enum.TryParse<MockQuestionType>(req.QuestionType, out var qType)) qType = MockQuestionType.SingleChoice;
-
-        q.Text = req.Text; q.Topic = req.Topic; q.Difficulty = diff;
-        q.QuestionType = qType; q.Marks = req.Marks; q.NegativeMarks = req.NegativeMarks;
-        q.Explanation = req.Explanation; q.ExplanationImageUrl = req.ExplanationImageUrl;
-        q.ImageUrl = req.ImageUrl; q.FormulaLatex = req.FormulaLatex;
-
-        db.MockTestOptions.RemoveRange(q.Options);
-        foreach (var (opt, idx) in req.Options.Select((o, i) => (o, i)))
-            db.MockTestOptions.Add(new MockTestOption
-            {
-                Text = opt.Text,
-                IsCorrect = opt.IsCorrect,
-                ImageUrl = opt.ImageUrl,
-                QuestionId = q.Id,
-                DisplayOrder = idx
-            });
-
-        await db.SaveChangesAsync();
-        return NoContent();
-    }
-
-    [HttpDelete("questions/{questionId}")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> DeleteQuestion(int questionId)
-    {
-        var q = await db.MockTestQuestions.FindAsync(questionId);
-        if (q is null) return NotFound();
-        db.MockTestQuestions.Remove(q);
-        await db.SaveChangesAsync();
-        return NoContent();
-    }
-
-    // ─── Start attempt ─────────────────────────────────────────
-    [HttpPost("start")]
-    public async Task<IActionResult> Start([FromBody] StartMockAttemptRequest req)
-    {
         try
         {
-            var test = await db.MockTests
-                .Include(m => m.Questions.OrderBy(q => q.DisplayOrder))
-                    .ThenInclude(q => q.Options.OrderBy(o => o.DisplayOrder))
-                .Include(m => m.Questions)
-                    .ThenInclude(q => q.CodingQuestion!)
-                        .ThenInclude(cq => cq.TestCases.OrderBy(t => t.DisplayOrder))
-                .FirstOrDefaultAsync(m => m.Id == req.MockTestId);
+            var sql = await System.IO.File.ReadAllTextAsync(sqlPath);
+            var statements = SplitStatements(sql);
 
-            if (test is null)
-                return NotFound(new { message = "Assessment not found." });
+            await using var conn = new MySqlConnection(connStr);
+            await conn.OpenAsync();
 
-            // Only Published tests are accessible to students.
-            // SuperAdmin / OrgAdmin can preview Draft tests too.
-            var callerRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
-            bool isAdmin = callerRole is "SuperAdmin" or "OrgAdmin" or "Instructor";
-
-            if (test.Status != MockTestStatus.Published && !isAdmin)
-                return BadRequest(new
-                {
-                    message = "This assessment is not published yet. Please contact your administrator.",
-                    status = test.Status.ToString()
-                });
-
-            if (!test.Questions.Any())
-                return BadRequest(new { message = "This assessment has no questions yet. Add questions before starting." });
-
-            var prevCount = await db.MockTestAttempts.CountAsync(a => a.MockTestId == req.MockTestId && a.StudentId == req.StudentId);
-            if (prevCount >= test.MaxAttempts)
-                return BadRequest(new { message = $"You have used all {test.MaxAttempts} attempt(s) for this assessment." });
-
-            var attempt = new MockTestAttempt
+            foreach (var stmt in statements)
             {
-                MockTestId = req.MockTestId,
-                StudentId = req.StudentId,
-                UserId = req.StudentId,  // UserId is the actual FK on MockTestAttempts → Users; StudentId is a duplicate column that doesn't carry the constraint
-                AttemptNumber = prevCount + 1
-            };
-            db.MockTestAttempts.Add(attempt);
-            await db.SaveChangesAsync();
+                var trimmed = stmt.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith("--")) continue;
 
-            // TotalQuestions=0 means "not configured" — default to 20 random questions.
-            // Never serve the entire question bank to the student.
-            // Separate MCQ and Coding questions
-            var mcqQuestions = test.Questions.Where(q => q.QuestionType != MockQuestionType.Coding).ToList();
-            var codingQuestions = test.Questions.Where(q => q.QuestionType == MockQuestionType.Coding).ToList();
+                try
+                {
+                    await using var cmd = new MySqlCommand(trimmed, conn);
+                    cmd.CommandTimeout = 120;
+                    await cmd.ExecuteNonQueryAsync();
 
-            // How many MCQ to show: TotalQuestions - coding count (always show all coding, max 2)
-            var codingToShow = Math.Min(codingQuestions.Count, 2);
-            var mcqToShow = Math.Max(0, (test.TotalQuestions > 0 ? test.TotalQuestions : 20) - codingToShow);
-
-            // Randomize MCQ pool, then take required count. Coding always last (fixed order).
-            var selectedMcq = test.RandomizeQuestions
-                ? mcqQuestions.OrderBy(_ => Guid.NewGuid()).Take(mcqToShow).ToList()
-                : mcqQuestions.OrderBy(q => q.DisplayOrder).Take(mcqToShow).ToList();
-
-            var selectedCoding = codingQuestions.OrderBy(q => q.DisplayOrder).Take(codingToShow).ToList();
-
-            // Final question list: MCQ first (questions 1-18), coding last (19-20)
-            var questions = selectedMcq.Concat(selectedCoding).ToList();
+                    if (trimmed.StartsWith("INSERT INTO MockTests", StringComparison.OrdinalIgnoreCase)) stats.MockTests++;
+                    else if (trimmed.StartsWith("INSERT INTO MockTestQuestions", StringComparison.OrdinalIgnoreCase)) stats.Questions++;
+                    else if (trimmed.StartsWith("INSERT INTO MockTestOptions", StringComparison.OrdinalIgnoreCase)) stats.Options++;
+                    else if (trimmed.StartsWith("INSERT INTO CodingQuestions", StringComparison.OrdinalIgnoreCase)) stats.CodingQuestions++;
+                    else if (trimmed.StartsWith("INSERT INTO TestCases", StringComparison.OrdinalIgnoreCase)) stats.TestCases++;
+                }
+                catch (MySqlException ex) when (ex.Number == 1062) { stats.Skipped++; }
+                catch (Exception ex)
+                {
+                    logger.LogWarning("Seed statement failed: {Error} | SQL: {Stmt}",
+                        ex.Message, trimmed.Length > 200 ? trimmed[..200] + "…" : trimmed);
+                    stats.Errors++;
+                }
+            }
 
             return Ok(new
             {
-                attemptId = attempt.Id,
-                timeLimitMins = test.TimeLimitMins,
-                totalQuestions = questions.Count,
-                attemptNumber = attempt.AttemptNumber,
-                questions = questions.Select(q => new
+                message = "Seed completed!",
+                stats = new
                 {
-                    q.Id,
-                    q.Text,
-                    q.ImageUrl,
-                    q.Topic,
-                    q.Marks,
-                    q.FormulaLatex,
-                    Difficulty = q.Difficulty.ToString(),
-                    QuestionType = q.QuestionType.ToString(),
-                    options = q.Options.Select(o => new { o.Id, o.Text, o.ImageUrl }),
-                    // Include coding question details so frontend can render the problem + compiler
-                    codingQuestion = q.CodingQuestion == null ? null : new
-                    {
-                        q.CodingQuestion.Id,
-                        q.CodingQuestion.ProblemStatement,
-                        q.CodingQuestion.Constraints,
-                        q.CodingQuestion.SampleInput,
-                        q.CodingQuestion.SampleOutput,
-                        q.CodingQuestion.StarterCodePython,
-                        q.CodingQuestion.StarterCodeCpp,
-                        q.CodingQuestion.StarterCodeJava,
-                        q.CodingQuestion.StarterCodeJs,
-                        // Only send visible (non-hidden) test cases to student
-                        testCases = q.CodingQuestion.TestCases
-                            .Where(t => !t.IsHidden)
-                            .Select(t => new { t.Input, t.ExpectedOutput, t.DisplayOrder })
-                    }
-                })
+                    mockTestsCreated = stats.MockTests,
+                    questionsInserted = stats.Questions,
+                    optionsInserted = stats.Options,
+                    codingQsInserted = stats.CodingQuestions,
+                    testCasesInserted = stats.TestCases,
+                    duplicatesSkipped = stats.Skipped,
+                    statementsWithError = stats.Errors,
+                }
             });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message, type = ex.GetType().Name });
+            logger.LogError(ex, "Seed failed");
+            return StatusCode(500, new { message = "Seed failed: " + ex.Message });
         }
     }
 
-    // ─── Submit attempt ────────────────────────────────────────
-    [HttpPost("submit")]
-    public async Task<IActionResult> Submit([FromBody] SubmitMockAttemptRequest req)
+    // ── Status ─────────────────────────────────────────────────────
+    [HttpGet("status")]
+    public IActionResult Status()
     {
-        var attempt = await db.MockTestAttempts
-            .Include(a => a.MockTest)
-            .ThenInclude(t => t.Questions)
-            .ThenInclude(q => q.Options)
-            .FirstOrDefaultAsync(a => a.Id == req.AttemptId);
-        if (attempt is null) return NotFound();
-        if (attempt.Status != MockAttemptStatus.InProgress)
-            return BadRequest(new { message = "Already submitted" });
-
-        // Only grade the questions that were actually served to the student.
-        // req.Answers contains one entry per question shown — use those question IDs
-        // to filter, so we never divide by 220 when only 20 were shown.
-        var allQuestions = attempt.MockTest.Questions.ToList();
-        var answeredQuestionIds = req.Answers.Select(a => a.QuestionId).ToHashSet();
-        var questions = allQuestions
-            .Where(q => answeredQuestionIds.Contains(q.Id))
-            .ToList();
-
-        // If student skipped all (submitted with 0 answers), fall back to all shown questions
-        if (questions.Count == 0) questions = allQuestions;
-
-        int totalMarks = questions.Sum(q => q.Marks);
-        int earned = 0, negative = 0;
-        var topicData = new Dictionary<string, (int total, int correct)>();
-
-        foreach (var q in questions)
-        {
-            var ans = req.Answers.FirstOrDefault(a => a.QuestionId == q.Id);
-            bool isSkipped = ans == null;
-            bool isCorrect = false;
-            int marks = 0;
-
-            if (!isSkipped)
-            {
-                switch (q.QuestionType)
-                {
-                    case MockQuestionType.SingleChoice:
-                    case MockQuestionType.Dropdown:
-                    case MockQuestionType.TrueFalse:
-                        {
-                            var correctOpt = q.Options.FirstOrDefault(o => o.IsCorrect);
-                            isCorrect = correctOpt?.Id == ans!.SelectedOptionId;
-                            if (isCorrect) { marks = q.Marks; earned += q.Marks; }
-                            else { marks = -q.NegativeMarks; negative += q.NegativeMarks; }
-                            break;
-                        }
-                    case MockQuestionType.MultiChoice:
-                        {
-                            var correctIds = q.Options.Where(o => o.IsCorrect).Select(o => o.Id).OrderBy(x => x).ToList();
-                            var selectedIds = (ans!.SelectedOptionIds ?? []).OrderBy(x => x).ToList();
-                            isCorrect = correctIds.SequenceEqual(selectedIds);
-                            if (isCorrect) { marks = q.Marks; earned += q.Marks; }
-                            else { marks = -q.NegativeMarks; negative += q.NegativeMarks; }
-                            break;
-                        }
-                    case MockQuestionType.ShortAnswer:
-                    case MockQuestionType.Formula:
-                        marks = 0;
-                        isSkipped = true;
-                        break;
-                }
-            }
-
-            string? selectedIdsStr = ans?.SelectedOptionIds?.Count > 0
-                ? string.Join(",", ans.SelectedOptionIds)
-                : null;
-
-            db.MockTestAnswers.Add(new MockTestAnswer
-            {
-                AttemptId = attempt.Id,
-                QuestionId = q.Id,
-                SelectedOptionId = ans?.SelectedOptionId,
-                SelectedOptionIds = selectedIdsStr,
-                TextAnswer = ans?.TextAnswer,
-                IsCorrect = isCorrect,
-                IsSkipped = isSkipped,
-                MarksAwarded = marks,
-            });
-
-            var topicKey = q.Topic ?? "General";
-            if (!topicData.ContainsKey(topicKey)) topicData[topicKey] = (0, 0);
-            var (t, cor) = topicData[topicKey];
-            topicData[topicKey] = (t + 1, cor + (isCorrect ? 1 : 0));
-        }
-
-        var net = Math.Max(0, earned - negative);
-        var scorePct = totalMarks > 0 ? (int)Math.Round(net * 100.0 / totalMarks) : 0;
-        var passed = scorePct >= attempt.MockTest.PassMarkPercent;
-        var readiness = scorePct >= 80 ? "Ready" : scorePct >= 60 ? "NeedsPractice" : "Weak";
-
-        attempt.CompletedAt = DateTime.UtcNow;
-        attempt.TimeTakenSecs = req.TimeTakenSecs;
-        attempt.TotalMarks = totalMarks;
-        attempt.MarksObtained = net;
-        attempt.NegativeMarks = negative;
-        attempt.ScorePercent = scorePct;
-        attempt.Passed = passed;
-        attempt.Status = MockAttemptStatus.Completed;
-        attempt.InterviewReadiness = readiness;
-
-        foreach (var (topic, (tot, cor)) in topicData)
-            db.TopicScores.Add(new TopicScore
-            {
-                AttemptId = attempt.Id,
-                Topic = topic,
-                TotalQuestions = tot,
-                Correct = cor,
-                ScorePercent = tot > 0 ? (int)Math.Round(cor * 100.0 / tot) : 0
-            });
-
-        await db.SaveChangesAsync();
-
-        var allScores = await db.MockTestAttempts
-            .Where(a => a.MockTestId == attempt.MockTestId && a.Status == MockAttemptStatus.Completed)
-            .OrderByDescending(a => a.ScorePercent).Select(a => a.Id).ToListAsync();
-        attempt.Rank = allScores.IndexOf(attempt.Id) + 1;
-        await db.SaveChangesAsync();
-
-        // Send exam result email after 30-minute delay (fire and forget)
-        var studentEmail = (await db.Users.Include(u => u.Organization)
-            .FirstOrDefaultAsync(u => u.Id == attempt.UserId));
-        if (studentEmail?.Email is not null)
-        {
-            var emailTo = studentEmail.Email;
-            var emailName = studentEmail.FirstName;
-            var emailOrg = studentEmail.Organization?.Name ?? "Your Organization";
-            var examTitle = attempt.MockTest.Title;
-            var finalScore = scorePct;
-            var finalPassed = passed;
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromMinutes(30));
-                    await emailService.SendExamResultAsync(emailTo, emailName, examTitle, finalScore, finalPassed, emailOrg);
-                    logger.LogInformation("Exam result email sent to {Email} after 30-min delay", emailTo);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Delayed exam result email failed for {Email}", emailTo);
-                }
-            });
-        }
-
-        var correctCount = questions.Count(q => { var ans = req.Answers.FirstOrDefault(a => a.QuestionId == q.Id); if (ans == null) return false; var correctOpt = q.Options.FirstOrDefault(o => o.IsCorrect); return correctOpt?.Id == ans.SelectedOptionId; });
-        var incorrectCount = questions.Count(q => req.Answers.Any(a => a.QuestionId == q.Id)) - correctCount;
-
-        return Ok(new { scorePct, passed, readiness, net, totalMarks, negativeMarks = negative, rank = attempt.Rank, attemptId = attempt.Id, correct = correctCount, incorrect = Math.Max(0, incorrectCount), totalQuestions = questions.Count });
-    }
-
-    // ─── Get student's latest attempt for a specific test ──────
-    [HttpGet("{testId}/my-attempt")]
-    public async Task<IActionResult> GetMyAttempt(int testId, [FromQuery] int studentId)
-    {
-        var attempt = await db.MockTestAttempts
-            .Where(a => a.MockTestId == testId && a.StudentId == studentId)
-            .OrderByDescending(a => a.StartedAt)
-            .FirstOrDefaultAsync();
-
-        if (attempt is null) return NotFound(new { message = "No previous attempt found" });
-
-        // Return same shape as submit response so frontend can show result directly
-        var test = await db.MockTests.FindAsync(testId);
+        var wwwroot = env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        var sqlPath = Path.Combine(wwwroot, "seed_assessments_final.sql");
+        var exists = System.IO.File.Exists(sqlPath);
         return Ok(new
         {
-            attemptId = attempt.Id,
-            scorePct = attempt.ScorePercent,
-            net = attempt.MarksObtained,
-            totalMarks = attempt.TotalMarks,
-            correct = attempt.MarksObtained,   // approximate
-            incorrect = 0,
-            passed = attempt.Passed,
-            readiness = attempt.InterviewReadiness,
-            timeTaken = attempt.TimeTakenSecs,
-            attemptNumber = attempt.AttemptNumber,
-            completedAt = attempt.CompletedAt,
-            testTitle = test?.Title,
+            fileReady = exists,
+            path = sqlPath,
+            sizeMb = exists ? Math.Round(new FileInfo(sqlPath).Length / 1024.0 / 1024.0, 2) : 0,
+            instructions = exists
+                ? "File is ready. POST /api/seed/run to execute."
+                : "Upload the file first via POST /api/seed/upload with field name 'file'."
         });
     }
 
-    // ─── Attempt result detail ─────────────────────────────────
-    // ─── Admin: all attempts for an exam (for manual paper correction) ─
-    [HttpGet("{testId}/attempts")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> GetAllAttempts(int testId)
+    // ── Seed ServiceNow ITSM Questions directly via EF Core ────────
+    // POST /api/seed/servicenow?examId=4
+    // No file upload needed — inserts 18 MCQ + 2 coding questions in one call
+    [HttpPost("servicenow")]
+    public async Task<IActionResult> SeedServiceNow([FromQuery] int? examId, [FromServices] LmsDbContext db)
     {
-        var attempts = await db.MockTestAttempts
-            .Include(a => a.Student)
-            .Include(a => a.Answers)
-                .ThenInclude(ans => ans.Question)
-                    .ThenInclude(q => q.CodingQuestion!)
-                        .ThenInclude(cq => cq.TestCases)
-            .Include(a => a.Answers)
-                .ThenInclude(ans => ans.Question)
-                    .ThenInclude(q => q.Options)
-            .Where(a => a.MockTestId == testId)
-            .OrderByDescending(a => a.StartedAt)
-            .ToListAsync();
+        // Find exam
+        var exam = examId.HasValue
+            ? await db.MockTests.FindAsync(examId.Value)
+            : await db.MockTests.FirstOrDefaultAsync(m => m.Title.Contains("ServiceNow") || m.Title.Contains("ITSM"));
 
-        var result = attempts.Select(a => new
-        {
-            attemptId = a.Id,
-            studentId = a.StudentId,
-            studentName = $"{a.Student.FirstName} {a.Student.LastName}",
-            studentEmail = a.Student.Email,
-            startedAt = a.StartedAt,
-            completedAt = a.CompletedAt,
-            timeTakenSecs = a.TimeTakenSecs,
-            status = a.Status.ToString(),
-            attemptNumber = a.AttemptNumber,
-            scorePercent = a.ScorePercent,
-            passed = a.Passed,
-            marksObtained = a.MarksObtained,
-            totalMarks = a.TotalMarks,
-            // MCQ answers
-            mcqAnswers = a.Answers
-                .Where(ans => ans.Question.QuestionType != MockQuestionType.Coding)
-                .Select(ans => new {
-                    questionId = ans.QuestionId,
-                    questionText = ans.Question.Text,
-                    topic = ans.Question.Topic,
-                    isCorrect = ans.IsCorrect,
-                    isSkipped = ans.IsSkipped,
-                    marksAwarded = ans.MarksAwarded,
-                    selectedOption = ans.SelectedOption?.Text,
-                    correctOption = ans.Question.Options.FirstOrDefault(o => o.IsCorrect)?.Text
-                }),
-            // Coding questions shown to this student
-            codingQuestions = a.Answers
-                .Where(ans => ans.Question.QuestionType == MockQuestionType.Coding)
-                .Select(ans => new {
-                    questionId = ans.QuestionId,
-                    title = ans.Question.Text,
-                    topic = ans.Question.Topic,
-                    marks = ans.Question.Marks,
-                    displayOrder = ans.Question.DisplayOrder,
-                    problemStatement = ans.Question.CodingQuestion != null ? ans.Question.CodingQuestion.ProblemStatement : "",
-                    constraints = ans.Question.CodingQuestion != null ? ans.Question.CodingQuestion.Constraints : "",
-                    sampleInput = ans.Question.CodingQuestion != null ? ans.Question.CodingQuestion.SampleInput : "",
-                    sampleOutput = ans.Question.CodingQuestion != null ? ans.Question.CodingQuestion.SampleOutput : "",
-                    // All test cases so admin can verify manually
-                    testCases = ans.Question.CodingQuestion != null
-                        ? ans.Question.CodingQuestion.TestCases.OrderBy(t => t.DisplayOrder).Select(t => new {
-                            t.Input,
-                            t.ExpectedOutput,
-                            t.IsHidden
-                        })
-                        : Enumerable.Empty<object>()
-                })
-        });
+        if (exam is null)
+            return NotFound(new { message = "No ServiceNow/ITSM exam found. Pass ?examId= or create an exam first." });
 
-        return Ok(result);
-    }
+        logger.LogInformation("Seeding ServiceNow into exam {Id}: {Title}", exam.Id, exam.Title);
 
-    // ─── Admin: mark coding question manually ──────────────────
-    [HttpPatch("attempt/{attemptId}/mark-coding")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> MarkCodingQuestion(int attemptId, [FromBody] MarkCodingRequest req)
-    {
-        var attempt = await db.MockTestAttempts
-            .Include(a => a.Answers)
-            .FirstOrDefaultAsync(a => a.Id == attemptId);
-        if (attempt is null) return NotFound();
+        // Clean existing questions
+        var existingQIds = await db.MockTestQuestions
+            .Where(q => q.MockTestId == exam.Id)
+            .Select(q => q.Id).ToListAsync();
 
-        var answer = attempt.Answers.FirstOrDefault(a => a.QuestionId == req.QuestionId);
-        if (answer is null) return NotFound(new { message = "Answer not found for this attempt" });
+        var codingQIds = await db.CodingQuestions
+            .Where(c => existingQIds.Contains(c.MockTestQuestionId))
+            .Select(c => c.Id).ToListAsync();
 
-        answer.MarksAwarded = req.MarksAwarded;
-        answer.IsCorrect = req.MarksAwarded > 0;
-
-        // Recalculate total marks and score
-        var allAnswers = attempt.Answers.ToList();
-        attempt.MarksObtained = (int)allAnswers.Sum(a => a.MarksAwarded);
-        if (attempt.TotalMarks > 0)
-            attempt.ScorePercent = (int)Math.Round(attempt.MarksObtained * 100.0 / attempt.TotalMarks);
-
-        var test = await db.MockTests.FindAsync(attempt.MockTestId);
-        attempt.Passed = test != null && attempt.ScorePercent >= test.PassMarkPercent;
-
+        db.TestCases.RemoveRange(db.TestCases.Where(t => codingQIds.Contains(t.CodingQuestionId)));
+        db.CodingQuestions.RemoveRange(db.CodingQuestions.Where(c => existingQIds.Contains(c.MockTestQuestionId)));
+        db.MockTestOptions.RemoveRange(db.MockTestOptions.Where(o => existingQIds.Contains(o.QuestionId)));
+        db.MockTestQuestions.RemoveRange(db.MockTestQuestions.Where(q => q.MockTestId == exam.Id));
         await db.SaveChangesAsync();
-        return Ok(new { message = "Marks updated", marksObtained = attempt.MarksObtained, scorePercent = attempt.ScorePercent, passed = attempt.Passed });
-    }
 
-    [HttpGet("attempt/{attemptId}")]
-    public async Task<IActionResult> GetAttemptResult(int attemptId)
-    {
-        var a = await db.MockTestAttempts
-            .Include(a => a.MockTest)
-            .Include(a => a.Student)
-            .Include(a => a.TopicScores)
-            .Include(a => a.Answers).ThenInclude(ans => ans.Question).ThenInclude(q => q.Options)
-            .Include(a => a.Answers).ThenInclude(ans => ans.SelectedOption)
-            .FirstOrDefaultAsync(a => a.Id == attemptId);
-        if (a is null) return NotFound();
-
-        var ansDetails = a.Answers.Select(ans => {
-            var q = ans.Question;
-            var correctOpts = q.Options.Where(o => o.IsCorrect).Select(o => o.Text).ToList();
-            var selectedOpts = new List<string>();
-            if (ans.SelectedOption is not null) selectedOpts.Add(ans.SelectedOption.Text);
-            if (!string.IsNullOrEmpty(ans.SelectedOptionIds))
-            {
-                var selIds = ans.SelectedOptionIds.Split(',').Select(int.Parse).ToHashSet();
-                selectedOpts = q.Options.Where(o => selIds.Contains(o.Id)).Select(o => o.Text).ToList();
-            }
-            return new MockAnswerDetailDto(
-                q.Id, q.Text, q.ImageUrl,
-                q.QuestionType.ToString(),
-                ans.SelectedOption?.Text,
-                selectedOpts,
-                correctOpts.FirstOrDefault(),
-                correctOpts,
-                ans.IsCorrect, ans.IsSkipped, ans.MarksAwarded,
-                q.Explanation, q.ExplanationImageUrl, q.FormulaLatex
-            );
-        }).ToList();
-
-        return Ok(new MockAttemptResultDto(
-            a.Id, a.MockTestId, a.MockTest.Title,
-            a.StudentId, $"{a.Student.FirstName} {a.Student.LastName}",
-            a.StartedAt, a.CompletedAt, a.TimeTakenSecs,
-            a.TotalMarks, a.MarksObtained, a.NegativeMarks,
-            a.ScorePercent, a.Rank, a.Passed, a.InterviewReadiness,
-            a.Status.ToString(), a.AttemptNumber,
-            a.TopicScores.Select(t => new TopicScoreDto(t.Topic, t.TotalQuestions, t.Correct, t.ScorePercent)).ToList(),
-            ansDetails
-        ));
-    }
-
-    // ─── Analysis ──────────────────────────────────────────────
-    [HttpGet("analysis/student/{studentId}")]
-    public async Task<IActionResult> GetStudentAnalysis(int studentId)
-    {
-        var student = await db.Users.FindAsync(studentId);
-        if (student is null) return NotFound();
-
-        var attempts = await db.MockTestAttempts
-            .Include(a => a.MockTest).Include(a => a.TopicScores)
-            .Where(a => a.StudentId == studentId && a.Status == MockAttemptStatus.Completed)
-            .OrderByDescending(a => a.CompletedAt).ToListAsync();
-
-        if (!attempts.Any()) return Ok(new { message = "No completed attempts", studentId });
-
-        var avgScore = attempts.Average(a => a.ScorePercent);
-        var bestScore = attempts.Max(a => a.ScorePercent);
-        var readiness = bestScore >= 80 ? "Ready" : bestScore >= 60 ? "NeedsPractice" : "Weak";
-
-        var topicAgg = attempts.SelectMany(a => a.TopicScores)
-            .GroupBy(t => t.Topic)
-            .Select(g => {
-                var correct = g.Sum(x => x.Correct);
-                // Use Correct count as proxy for total shown — TopicScore.TotalQuestions
-                // may be corrupted (220 instead of 20) in older attempts.
-                // ScorePercent is already stored correctly per topic at submit time.
-                var avgScore = g.Count() > 0 ? (int)Math.Round(g.Average(x => x.ScorePercent)) : 0;
-                return new TopicScoreDto(g.Key, correct, correct, avgScore);
-            })
-            .ToList();
-
-        return Ok(new MockTestAnalysisDto(
-            studentId, $"{student.FirstName} {student.LastName}",
-            attempts.Count, Math.Round(avgScore, 1), bestScore, readiness,
-            topicAgg.Where(t => t.ScorePercent < 60).OrderBy(t => t.ScorePercent).ToList(),
-            topicAgg.Where(t => t.ScorePercent >= 75).OrderByDescending(t => t.ScorePercent).ToList(),
-            attempts.Take(5).Select(a => new MockAttemptResultDto(
-                a.Id, a.MockTestId, a.MockTest.Title, a.StudentId,
-                $"{student.FirstName} {student.LastName}",
-                a.StartedAt, a.CompletedAt, a.TimeTakenSecs,
-                a.TotalMarks, a.MarksObtained, a.NegativeMarks,
-                a.ScorePercent, a.Rank, a.Passed, a.InterviewReadiness,
-                a.Status.ToString(), a.AttemptNumber,
-                a.TopicScores.Select(t => new TopicScoreDto(t.Topic, t.TotalQuestions, t.Correct, t.ScorePercent)).ToList(), null
-            )).ToList()
-        ));
-    }
-
-    [HttpGet("{testId}/leaderboard")]
-    public async Task<IActionResult> GetLeaderboard(int testId)
-    {
-        var attempts = await db.MockTestAttempts
-            .Include(a => a.Student)
-            .Where(a => a.MockTestId == testId && a.Status == MockAttemptStatus.Completed)
-            .OrderByDescending(a => a.ScorePercent).ThenBy(a => a.TimeTakenSecs)
-            .Take(50).ToListAsync();
-        return Ok(attempts.Select((a, i) => new
+        // ── 18 MCQ Questions ──────────────────────────────────────
+        var mcqs = new (string text, string topic, int diff, string correct, string[] wrong)[]
         {
-            rank = i + 1,
-            a.ScorePercent,
-            a.MarksObtained,
-            a.TotalMarks,
-            a.TimeTakenSecs,
-            a.Passed,
-            a.InterviewReadiness,
-            a.CompletedAt,
-            student = new { a.Student.Id, a.Student.FirstName, a.Student.LastName }
-        }));
-    }
+            ("What is the primary purpose of Incident Management in ITIL?", "Incident Management", 1,
+                "To restore normal service operation as quickly as possible",
+                ["To identify root cause of recurring incidents", "To plan and implement changes to IT infrastructure", "To manage the IT asset lifecycle"]),
 
-    // ─── Bulk upload questions from Excel ─────────────────────
-    [HttpPost("{testId}/questions/bulk-upload")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
-    public async Task<IActionResult> BulkUploadQuestions(int testId, IFormFile file)
-    {
-        if (file is null || file.Length == 0)
-            return BadRequest(new { message = "No file uploaded" });
+            ("In ServiceNow, which table stores all Incident records?", "ServiceNow Platform", 1,
+                "incident",
+                ["task", "sc_request", "change_request"]),
 
-        var test = await db.MockTests.FindAsync(testId);
-        if (test is null) return NotFound(new { message = "Test not found" });
+            ("An incident has Impact = 2 (Medium) and Urgency = 1 (High). What is the Priority?", "Incident Management", 2,
+                "2 - High",
+                ["1 - Critical", "3 - Medium", "4 - Low"]),
 
-        try
+            ("Which Change type requires full CAB approval for significant changes?", "Change Management", 1,
+                "Normal Change",
+                ["Standard Change", "Emergency Change", "Minor Change"]),
+
+            ("What does CMDB stand for?", "CMDB", 1,
+                "Configuration Management Database",
+                ["Change Management Decision Board", "Centralized Monitoring and Diagnostics Base", "Configuration Monitoring and Deployment Board"]),
+
+            ("What is an SLA in the context of ITSM?", "SLA Management", 1,
+                "A formal agreement defining the expected level of service between provider and customer",
+                ["A software tool used to log incidents", "A checklist for deployment activities", "A report generated after a major incident"]),
+
+            ("In ServiceNow, what is GlideRecord used for?", "ServiceNow Platform", 2,
+                "Querying and manipulating database records using server-side JavaScript",
+                ["Designing UI forms in Service Portal", "Creating workflow diagrams", "Managing SLA timers"]),
+
+            ("Which ITIL process identifies root causes of recurring incidents?", "Problem Management", 1,
+                "Problem Management",
+                ["Incident Management", "Change Management", "Event Management"]),
+
+            ("What is a Configuration Item (CI) in CMDB?", "CMDB", 1,
+                "Any component that needs to be managed to deliver an IT service",
+                ["A user who configures ServiceNow workflows", "A type of change request", "A document that defines IT policies"]),
+
+            ("What is the correct Change Management lifecycle sequence in ServiceNow?", "Change Management", 2,
+                "Draft → Assess → Authorize → Scheduled → Implement → Review → Closed",
+                ["New → In Progress → Resolved → Closed", "Requested → Approved → Deployed → Done", "Open → Pending → Active → Resolved"]),
+
+            ("What is the purpose of the Service Catalog in ServiceNow?", "Service Catalog", 1,
+                "To allow users to request IT services through a self-service portal",
+                ["To list all incidents raised in the system", "To track software licenses", "To manage employee onboarding only"]),
+
+            ("Which ServiceNow scripting type runs on the server side?", "ServiceNow Platform", 2,
+                "Business Rules and Script Includes",
+                ["Client Scripts and UI Policies", "UI Actions only", "Jelly Scripts"]),
+
+            ("What does OLA stand for in ITSM?", "SLA Management", 2,
+                "Operational Level Agreement",
+                ["Organizational License Agreement", "Online Logging Application", "Outage Level Alert"]),
+
+            ("In ITIL, what is a Workaround?", "Problem Management", 1,
+                "A temporary solution that reduces incident impact without resolving the root cause",
+                ["A permanent fix after root cause analysis", "A script that auto-closes incidents", "A change request raised after an incident"]),
+
+            ("Which ServiceNow feature automatically routes incidents to the correct team?", "Incident Management", 2,
+                "Assignment Rules",
+                ["Approval Policies", "Escalation Policies", "Notification Rules"]),
+
+            ("What is a Major Incident in ITSM?", "Incident Management", 1,
+                "An incident with highest impact requiring coordinated response and dedicated team",
+                ["Any incident taking more than 1 hour to resolve", "An incident raised by a manager", "An incident affecting only one user"]),
+
+            ("In ServiceNow, what is a Business Rule?", "ServiceNow Platform", 2,
+                "A server-side script that runs when a record is displayed, inserted, updated, or deleted",
+                ["A rule that enforces password policies", "A client-side script that validates form fields", "A workflow that sends emails to approvers"]),
+
+            ("Which ITIL concept describes total available time divided by total agreed service time?", "SLA Management", 2,
+                "Availability (expressed as a percentage)",
+                ["Mean Time to Repair (MTTR)", "Mean Time Between Failures (MTBF)", "Recovery Point Objective (RPO)"]),
+        };
+
+        int order = 1;
+        foreach (var (text, topic, diff, correct, wrong) in mcqs)
         {
-            using var stream = file.OpenReadStream();
-            var rows = MiniExcel.Query(stream, useHeaderRow: true).Cast<IDictionary<string, object>>().ToList();
-
-            var questions = new List<MockTestQuestion>();
-            var errors = new List<string>();
-            int rowNum = 2;
-
-            foreach (var row in rows)
+            var q = new MockTestQuestion
             {
-                string Get(string key) => row.TryGetValue(key, out var v) && v != null ? v.ToString()!.Trim() : "";
-
-                var questionText = Get("Question Text *");
-                if (string.IsNullOrEmpty(questionText)) { rowNum++; continue; }
-
-                var typeStr = Get("Question Type *\n(SingleChoice/MultiChoice/TrueFalse/ShortAnswer)");
-                if (string.IsNullOrEmpty(typeStr)) typeStr = Get("Question Type *");
-                // Allow both "MultiChoice" and "MultipleChoice" spellings
-                if (typeStr.Equals("MultiChoice", StringComparison.OrdinalIgnoreCase)) typeStr = "MultipleChoice";
-                if (!Enum.TryParse<MockQuestionType>(typeStr, true, out var qType))
-                    qType = MockQuestionType.SingleChoice;
-
-                int marks = int.TryParse(Get("Marks"), out var m) ? m : 1;
-                int negMarks = int.TryParse(Get("Negative Marks"), out var nm) ? nm : 0;
-                if (!Enum.TryParse<MockTestDifficulty>(Get("Difficulty\n(Easy/Medium/Hard)"), true, out var diff))
-                    if (!Enum.TryParse<MockTestDifficulty>(Get("Difficulty"), true, out diff))
-                        diff = MockTestDifficulty.Medium;
-
-                var q = new MockTestQuestion
-                {
-                    Text = questionText,
-                    Topic = Get("Topic"),
-                    Difficulty = diff,
-                    QuestionType = qType,
-                    Marks = marks,
-                    NegativeMarks = negMarks,
-                    Explanation = Get("Explanation"),
-                    DisplayOrder = questions.Count,
-                    MockTestId = testId,
-                };
-
-                var correctRaw = Get("Correct Answer(s) *\n(A,B,C,D,E or A;B for multi)");
-                if (string.IsNullOrEmpty(correctRaw)) correctRaw = Get("Correct Answer(s) *");
-
-                if (qType == MockQuestionType.ShortAnswer)
-                {
-                    // For short answer, the "correct answer" field holds the expected text
-                }
-                else
-                {
-                    var optionKeys = new[] { "Option A *", "Option B *", "Option C", "Option D", "Option E" };
-                    var letters = new[] { "A", "B", "C", "D", "E" };
-                    var correctLetters = correctRaw.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries)
-                        .Select(s => s.Trim().ToUpper()).ToHashSet();
-
-                    for (int i = 0; i < optionKeys.Length; i++)
-                    {
-                        var optText = Get(optionKeys[i]);
-                        if (string.IsNullOrEmpty(optText) && i >= 2) continue;
-                        if (string.IsNullOrEmpty(optText)) { errors.Add($"Row {rowNum}: Option {letters[i]} is required"); continue; }
-                        q.Options.Add(new MockTestOption
-                        {
-                            Text = optText,
-                            IsCorrect = correctLetters.Contains(letters[i]),
-                            DisplayOrder = i,
-                        });
-                    }
-                }
-
-                questions.Add(q);
-                rowNum++;
-            }
-
-            if (errors.Any())
-                return BadRequest(new { message = "Upload has errors", errors });
-
-            db.MockTestQuestions.AddRange(questions);
-            test.TotalQuestions = await db.MockTestQuestions.CountAsync(q => q.MockTestId == testId) + questions.Count;
+                MockTestId = exam.Id,
+                Text = text,
+                Topic = topic,
+                Difficulty = (MockTestDifficulty)diff,
+                QuestionType = MockQuestionType.SingleChoice,
+                Marks = 1,
+                NegativeMarks = 0,
+                DisplayOrder = order++
+            };
+            db.MockTestQuestions.Add(q);
             await db.SaveChangesAsync();
 
-            return Ok(new { imported = questions.Count, total = test.TotalQuestions });
+            var allOptions = new[] { correct }.Concat(wrong).ToArray();
+            for (int i = 0; i < allOptions.Length; i++)
+                db.MockTestOptions.Add(new MockTestOption
+                {
+                    QuestionId = q.Id,
+                    Text = allOptions[i],
+                    IsCorrect = i == 0,
+                    DisplayOrder = i + 1
+                });
+            await db.SaveChangesAsync();
         }
-        catch (Exception ex)
+
+        // ── Q19: Incident Priority Calculator (Coding) ─────────────
+        var cq1 = new MockTestQuestion
         {
-            return StatusCode(500, new { message = "Failed to parse file: " + ex.Message });
-        }
+            MockTestId = exam.Id,
+            Text = "Incident Priority Calculator",
+            Topic = "Incident Management",
+            Difficulty = MockTestDifficulty.Medium,
+            QuestionType = MockQuestionType.Coding,
+            Marks = 10,
+            NegativeMarks = 0,
+            DisplayOrder = 19
+        };
+        db.MockTestQuestions.Add(cq1);
+        await db.SaveChangesAsync();
+
+        var coding1 = new CodingQuestion
+        {
+            MockTestQuestionId = cq1.Id,
+            ProblemStatement = "<p>In ServiceNow ITSM, incident <strong>Priority</strong> is calculated from <strong>Impact</strong> and <strong>Urgency</strong>.</p><br><p><strong>Priority Matrix:</strong></p><table border='1' cellpadding='6' style='border-collapse:collapse'><tr style='background:#1e293b;color:white'><th>Impact / Urgency</th><th>1-High</th><th>2-Medium</th><th>3-Low</th></tr><tr><td><b>1-High</b></td><td>1-Critical</td><td>2-High</td><td>3-Medium</td></tr><tr><td><b>2-Medium</b></td><td>2-High</td><td>3-Medium</td><td>4-Low</td></tr><tr><td><b>3-Low</b></td><td>3-Medium</td><td>4-Low</td><td>5-Planning</td></tr></table><br><p>Given <strong>impact</strong> and <strong>urgency</strong> (each 1-3), print the priority label.</p><p><strong>Input:</strong> Two integers on one line — impact urgency</p>",
+            Constraints = "1 <= impact <= 3\n1 <= urgency <= 3",
+            SampleInput = "1 2",
+            SampleOutput = "2-High",
+            StarterCodeJs = "const lines = [];\nrequire('readline').createInterface({ input: process.stdin })\n  .on('line', l => lines.push(l.trim()))\n  .on('close', () => {\n    const [impact, urgency] = lines[0].split(' ').map(Number);\n    const matrix = {\n      '1-1': '1-Critical', '1-2': '2-High',   '1-3': '3-Medium',\n      '2-1': '2-High',    '2-2': '3-Medium', '2-3': '4-Low',\n      '3-1': '3-Medium',  '3-2': '4-Low',    '3-3': '5-Planning'\n    };\n    // TODO: print the priority label\n    const key = `${impact}-${urgency}`;\n    \n  });"
+        };
+        db.CodingQuestions.Add(coding1);
+        await db.SaveChangesAsync();
+
+        (string input, string output, bool hidden)[] tc1 =
+        [
+            ("1 2", "2-High", false), ("1 1", "1-Critical", false),
+            ("3 3", "5-Planning", true), ("2 1", "2-High", true), ("1 3", "3-Medium", true)
+        ];
+        for (int i = 0; i < tc1.Length; i++)
+            db.TestCases.Add(new TestCase { CodingQuestionId = coding1.Id, Input = tc1[i].input, ExpectedOutput = tc1[i].output, IsHidden = tc1[i].hidden, DisplayOrder = i });
+        await db.SaveChangesAsync();
+
+        // ── Q20: SLA Breach Checker (Coding) ───────────────────────
+        var cq2 = new MockTestQuestion
+        {
+            MockTestId = exam.Id,
+            Text = "SLA Breach Checker",
+            Topic = "SLA Management",
+            Difficulty = MockTestDifficulty.Medium,
+            QuestionType = MockQuestionType.Coding,
+            Marks = 10,
+            NegativeMarks = 0,
+            DisplayOrder = 20
+        };
+        db.MockTestQuestions.Add(cq2);
+        await db.SaveChangesAsync();
+
+        var coding2 = new CodingQuestion
+        {
+            MockTestQuestionId = cq2.Id,
+            ProblemStatement = "<p>Check whether an incident's SLA has been <strong>BREACHED</strong> or <strong>MET</strong> based on its priority.</p><br><p><strong>SLA Resolution Targets:</strong></p><table border='1' cellpadding='6' style='border-collapse:collapse'><tr style='background:#1e293b;color:white'><th>Priority</th><th>Target Hours</th></tr><tr><td>1 - Critical</td><td>4 hours</td></tr><tr><td>2 - High</td><td>8 hours</td></tr><tr><td>3 - Medium</td><td>24 hours</td></tr><tr><td>4 - Low</td><td>72 hours</td></tr><tr><td>5 - Planning</td><td>168 hours</td></tr></table><br><p>Given priority (1-5) and hours taken, print <strong>MET</strong> or <strong>BREACHED</strong>.</p><p><strong>Input:</strong> Line 1: priority, Line 2: hours taken</p>",
+            Constraints = "1 <= priority <= 5\n0 <= hours <= 10000",
+            SampleInput = "2\n10",
+            SampleOutput = "BREACHED",
+            StarterCodeJs = "const lines = [];\nrequire('readline').createInterface({ input: process.stdin })\n  .on('line', l => lines.push(l.trim()))\n  .on('close', () => {\n    const priority = parseInt(lines[0]);\n    const hours    = parseInt(lines[1]);\n    const slaTargets = { 1: 4, 2: 8, 3: 24, 4: 72, 5: 168 };\n    // TODO: print MET or BREACHED\n    \n  });"
+        };
+        db.CodingQuestions.Add(coding2);
+        await db.SaveChangesAsync();
+
+        (string input, string output, bool hidden)[] tc2 =
+        [
+            ("2\n10", "BREACHED", false), ("3\n20", "MET", false),
+            ("1\n4", "MET", true), ("4\n73", "BREACHED", true), ("5\n100", "MET", true)
+        ];
+        for (int i = 0; i < tc2.Length; i++)
+            db.TestCases.Add(new TestCase { CodingQuestionId = coding2.Id, Input = tc2[i].input, ExpectedOutput = tc2[i].output, IsHidden = tc2[i].hidden, DisplayOrder = i });
+        await db.SaveChangesAsync();
+
+        // Fix exam settings
+        exam.TotalQuestions = 20;
+        exam.RandomizeQuestions = false;
+        exam.TimeLimitMins = 30;
+        exam.MaxAttempts = 1;
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "ServiceNow seed complete!",
+            examId = exam.Id,
+            examTitle = exam.Title,
+            mcqInserted = 18,
+            codingInserted = 2,
+            totalQuestions = 20
+        });
     }
 
-    static MockTestDto MapTest(MockTest m, bool includeQuestions) => new(
-        m.Id, m.Title, m.Description, m.Topic,
-        m.Difficulty.ToString(), m.Status.ToString(),
-        m.TimeLimitMins, m.TotalQuestions, m.PassMarkPercent,
-        m.RandomizeQuestions, m.ShowResultImmediately, m.MaxAttempts, m.Tags,
-        m.OrganizationId, m.CourseId, m.CreatedAt, m.Attempts.Count,
-        includeQuestions
-            ? m.Questions.OrderBy(q => q.DisplayOrder).Select(q => new MockTestQuestionDto(
-                q.Id, q.Text, q.ImageUrl, q.Explanation, q.ExplanationImageUrl,
-                q.FormulaLatex, q.Topic, q.Difficulty.ToString(),
-                q.QuestionType.ToString(), q.Marks, q.NegativeMarks, q.DisplayOrder,
-                q.Options.OrderBy(o => o.DisplayOrder)
-                    .Select(o => new MockTestOptionDto(o.Id, o.Text, o.ImageUrl, o.IsCorrect, o.DisplayOrder)).ToList()
-            )).ToList() : null
-    );
+    // ── Helpers ────────────────────────────────────────────────────
+    static List<string> SplitStatements(string sql)
+    {
+        var statements = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inString = false;
+        char strChar = '\'';
+
+        for (int i = 0; i < sql.Length; i++)
+        {
+            char c = sql[i];
+            if (!inString && (c == '\'' || c == '"')) { inString = true; strChar = c; current.Append(c); }
+            else if (inString && c == strChar)
+            {
+                if (i + 1 < sql.Length && sql[i + 1] == strChar) { current.Append(c); current.Append(sql[++i]); }
+                else { inString = false; current.Append(c); }
+            }
+            else if (!inString && c == ';') { var s = current.ToString().Trim(); if (!string.IsNullOrEmpty(s)) statements.Add(s); current.Clear(); }
+            else current.Append(c);
+        }
+        var last = current.ToString().Trim();
+        if (!string.IsNullOrEmpty(last)) statements.Add(last);
+        return statements;
+    }
+
+    class SeedStats
+    {
+        public int MockTests, Questions, Options, CodingQuestions, TestCases, Skipped, Errors;
+     
+    }
 }
