@@ -5,6 +5,7 @@ using LMS.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
 using MiniExcelLibs;
 
 namespace LMS.API.Controllers;
@@ -533,25 +534,25 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
     {
         var attempt = await db.MockTestAttempts
             .Include(a => a.MockTest)
-            .Include(a => a.Student).ThenInclude(s => s.Organization)
+            .Include(a => a.User).ThenInclude(u => u.Organization)
             .FirstOrDefaultAsync(a => a.Id == attemptId);
 
         if (attempt is null) return NotFound(new { message = "Attempt not found" });
-        if (attempt.Student?.Email is null) return BadRequest(new { message = "Student has no email" });
+        if (attempt.User?.Email is null) return BadRequest(new { message = "Student has no email" });
 
         await emailService.SendExamResultAsync(
-            attempt.Student.Email,
-            attempt.Student.FirstName,
+            attempt.User.Email,
+            attempt.User.FirstName,
             attempt.MockTest.Title,
             attempt.ScorePercent,
             attempt.Passed,
-            attempt.Student.Organization?.Name ?? "Your Organization"
+            attempt.User.Organization?.Name ?? "Your Organization"
         );
 
         return Ok(new
         {
-            message = $"Result email sent to {attempt.Student.Email}",
-            to = attempt.Student.Email,
+            message = $"Result email sent to {attempt.User.Email}",
+            to = attempt.User.Email,
             score = attempt.ScorePercent,
             passed = attempt.Passed,
             examTitle = attempt.MockTest.Title
@@ -564,7 +565,7 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
     public async Task<IActionResult> GetAllAttempts(int testId)
     {
         var attempts = await db.MockTestAttempts
-            .Include(a => a.Student)
+            .Include(a => a.User)
             .Include(a => a.Answers)
                 .ThenInclude(ans => ans.Question)
                     .ThenInclude(q => q.CodingQuestion!)
@@ -580,9 +581,9 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
         {
             attemptId = a.Id,
             studentId = a.StudentId,
-            studentName = $"{a.Student.FirstName} {a.Student.LastName}",
-            studentEmail = a.Student.Email,
-            studentPhone = a.Student.PhoneNumber,
+            studentName = $"{a.User.FirstName} {a.User.LastName}",
+            studentEmail = a.User.Email,
+            studentPhone = a.User.PhoneNumber,
             startedAt = a.StartedAt,
             completedAt = a.CompletedAt,
             timeTakenSecs = a.TimeTakenSecs,
@@ -668,7 +669,7 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
     {
         var a = await db.MockTestAttempts
             .Include(a => a.MockTest)
-            .Include(a => a.Student)
+            .Include(a => a.User)
             .Include(a => a.TopicScores)
             .Include(a => a.Answers).ThenInclude(ans => ans.Question).ThenInclude(q => q.Options)
             .Include(a => a.Answers).ThenInclude(ans => ans.SelectedOption)
@@ -699,7 +700,7 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
 
         return Ok(new MockAttemptResultDto(
             a.Id, a.MockTestId, a.MockTest.Title,
-            a.StudentId, $"{a.Student.FirstName} {a.Student.LastName}",
+            a.StudentId, $"{a.User.FirstName} {a.User.LastName}",
             a.StartedAt, a.CompletedAt, a.TimeTakenSecs,
             a.TotalMarks, a.MarksObtained, a.NegativeMarks,
             a.ScorePercent, a.Rank, a.Passed, a.InterviewReadiness,
@@ -760,7 +761,7 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
     public async Task<IActionResult> GetLeaderboard(int testId)
     {
         var attempts = await db.MockTestAttempts
-            .Include(a => a.Student)
+            .Include(a => a.User)
             .Where(a => a.MockTestId == testId && a.Status == MockAttemptStatus.Completed)
             .OrderByDescending(a => a.ScorePercent).ThenBy(a => a.TimeTakenSecs)
             .Take(50).ToListAsync();
@@ -774,7 +775,7 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
             a.Passed,
             a.InterviewReadiness,
             a.CompletedAt,
-            student = new { a.Student.Id, a.Student.FirstName, a.Student.LastName }
+            student = new { a.User.Id, a.User.FirstName, a.User.LastName }
         }));
     }
 
