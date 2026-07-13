@@ -116,7 +116,7 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
   <div class=""wrapper"">
     <div class=""header"">
       <h1>{orgName}</h1>
-      //<p>Learning Management System</p>
+      <p>Recruitment Process</p>
     </div>
     <div class=""body"">
       {content}
@@ -133,13 +133,14 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
     public async Task SendWelcomeEmailAsync(string to, string name, string orgName)
     {
         var content = $"""
-            <p class="greeting">👋 Welcome to {orgName}!</p>
-            <p class="text">Your account has been created successfully.</p>
+            <p class="greeting">👋 Welcome to {orgName}, {name}!</p>
+            <p class="text">Your account has been created successfully. You're now part of a community of learners committed to growing their skills.</p>
             <div class="card">
               <h3>Your account</h3>
               <p>{to}</p>
             </div>
-           
+            <p class="text">Start exploring our course catalog and enroll in courses that match your goals.</p>
+            <a href="#" class="btn">Browse Courses →</a>
             <p class="text" style="margin-top: 24px; font-size: 13px; color: #999;">If you didn't create this account, please ignore this email.</p>
             """;
         await SendAsync(to, name, $"Welcome to {orgName}! 🎓", BaseTemplate("#f97316", orgName, content));
@@ -154,7 +155,8 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
               <h3>Course</h3>
               <p>{courseTitle}</p>
             </div>
-            
+            <p class="text">You can start learning right now. Track your progress and complete all lessons to earn your certificate.</p>
+            <a href="#" class="btn">Start Learning →</a>
             """;
         await SendAsync(to, name, $"Enrollment Confirmed: {courseTitle}", BaseTemplate("#10b981", orgName, content));
     }
@@ -266,13 +268,72 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
             : $"<p class='text'>Thank you for attending the <strong>{examTitle}</strong> assessment hosted by <strong>{orgName}</strong>. Unfortunately, your score did not meet the required threshold for this round. We encourage you to keep practicing and try again in future opportunities.</p>";
         var nextSteps = passed
             ? "<div class='card' style='border-left:4px solid #10b981;background:#f0fdf4'><h3 style='color:#065f46'>What's Next?</h3><p style='color:#065f46'>Our team will reach out to you via email or phone with further instructions. Please keep an eye on your inbox.</p></div>"
-            : "<div class='card' style='border-left:4px solid #f59e0b;background:#fffbeb'></div>";
+            : "<div class='card' style='border-left:4px solid #f59e0b;background:#fffbeb'><h3 style='color:#92400e'>Keep Going!</h3><p style='color:#92400e'>Review the course material, strengthen your weak areas, and look out for future assessment opportunities from <strong>" + orgName + "</strong>.</p></div>";
+
+        var loginSection = $@"
+            <div class='card' style='border-left:4px solid #6366f1;background:#f5f3ff;margin-top:24px;'>
+              <h3 style='color:#4338ca;'>📋 View Your Detailed Marks</h3>
+              <p style='color:#555;font-size:14px;margin-top:8px;'>
+                To view your complete exam report including question-wise marks, please login to the portal using the same username and password you used at the time of registration:
+              </p>
+              <p style='margin-top:16px;text-align:center;'>
+                <a href='https://recruitment.mahvenx.com' style='display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4338ca);color:white;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;'>
+                  🔐 Login to View Your Results
+                </a>
+              </p>
+              <table style='width:100%;margin-top:16px;border-collapse:collapse;'>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;width:35%;border-bottom:1px solid #e5e7eb;'>🌐 Portal</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:13px;border-bottom:1px solid #e5e7eb;'>
+                    <a href='https://recruitment.mahvenx.com' style='color:#6366f1;'>recruitment.mahvenx.com</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;border-bottom:1px solid #e5e7eb;'>📧 Username</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:14px;color:#111;border-bottom:1px solid #e5e7eb;'>{to}</td>
+                </tr>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;border-bottom:1px solid #e5e7eb;'>🔑 Password</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:13px;border-bottom:1px solid #e5e7eb;'>Same password you used at the time of registration</td>
+                </tr>
+              </table>
+              <p style='font-size:12px;color:#9ca3af;margin-top:12px;'>
+                💡 Forgot your password? Use the ""Forgot Password"" option on the login page.
+              </p>
+            </div>
+
+            <div class='card' style='border-left:4px solid #10b981;background:#f0fdf4;margin-top:16px;'>
+              <h3 style='color:#065f46;'>📞 For Any Other Queries</h3>
+              <p style='color:#555;font-size:14px;margin-top:8px;'>
+                If you have any questions regarding your results or the recruitment process, please contact our HR team:
+              </p>
+              <table style='width:100%;margin-top:12px;border-collapse:collapse;'>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;width:35%;border-bottom:1px solid #d1fae5;'>📱 Phone / WhatsApp</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:15px;color:#065f46;border-bottom:1px solid #d1fae5;'>
+                    <a href='tel:+919441363687' style='color:#065f46;text-decoration:none;'>+91 94413 63687</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;'>📧 HR Email</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:15px;color:#065f46;'>
+                    <a href='mailto:hr@mahvenx.com' style='color:#065f46;'>hr@mahvenx.com</a>
+                  </td>
+                </tr>
+              </table>
+            </div>";
 
         var content = $"""
             <p class="greeting">{emoji} {headline}</p>
             {message}
-            
+            <div class="card" style="text-align:center; border-left:none; border:3px solid {color}; margin: 24px 0;">
+              <h3 style="color:#888; font-size:12px; text-transform:uppercase; letter-spacing:1px;">Your Score</h3>
+              <p style="font-size:56px; font-weight:900; color:{color}; line-height:1;">{score}%</p>
+              <p style="margin-top:8px;">{badge}</p>
+              <p style="margin-top:8px; font-size:13px; color:#888;">Required: 80% to qualify</p>
+            </div>
             {nextSteps}
+            {loginSection}
             <p class="text" style="font-size:13px; color:#999; margin-top:24px;">
               Assessment: <strong>{examTitle}</strong><br/>
               Conducted by: <strong>{orgName}</strong><br/>
