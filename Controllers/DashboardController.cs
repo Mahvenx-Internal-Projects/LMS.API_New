@@ -62,13 +62,20 @@ public class DashboardController(LmsDbContext db) : ControllerBase
         // Per-organization breakdown — students, courses, enrollments, revenue
         var orgBreakdown = await db.Organizations
             .Select(o => new {
-                o.Id,
-                o.Name,
-                o.LogoUrl,
-                o.PrimaryColor,
+                id = o.Id,
+                name = o.Name,
+                logoUrl = o.LogoUrl,
+                primaryColor = o.PrimaryColor,
+                isActive = o.IsActive,
                 studentCount = db.Users.Count(u => u.OrganizationId == o.Id && u.Role == UserRole.Student),
+                instructorCount = db.Users.Count(u => u.OrganizationId == o.Id && u.Role == UserRole.Instructor),
                 courseCount = db.Courses.Count(c => c.OrganizationId == o.Id),
                 enrollmentCount = db.Enrollments.Count(e => e.Course.OrganizationId == o.Id),
+                examCount = db.MockTests.Count(m => m.OrganizationId == o.Id),
+                examAttempts = db.MockTestAttempts.Count(a => a.MockTest.OrganizationId == o.Id),
+                examPassed = db.MockTestAttempts.Count(a => a.MockTest.OrganizationId == o.Id && a.Passed),
+                avgExamScore = db.MockTestAttempts.Any(a => a.MockTest.OrganizationId == o.Id)
+                    ? db.MockTestAttempts.Where(a => a.MockTest.OrganizationId == o.Id).Average(a => (double)a.ScorePercent) : 0,
                 revenue = db.OrderItems
                     .Where(oi => oi.Course.OrganizationId == o.Id && oi.Order.Status == OrderStatus.Paid)
                     .Sum(oi => (decimal?)oi.Price) ?? 0,
@@ -118,6 +125,81 @@ public class DashboardController(LmsDbContext db) : ControllerBase
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // SuperAdmin — full detail for one org: all members + exam results
+    // GET /api/dashboard/superadmin/org/{orgId}
+    // ════════════════════════════════════════════════════════════════════════
+    [HttpGet("superadmin/org/{orgId}")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<IActionResult> SuperAdminOrgDetail(int orgId)
+    {
+        var org = await db.Organizations.FindAsync(orgId);
+        if (org is null) return NotFound();
+
+        // All users
+        var users = await db.Users
+            .Where(u => u.OrganizationId == orgId)
+            .OrderBy(u => u.Role).ThenBy(u => u.FirstName)
+            .Select(u => new {
+                id = u.Id,
+                name = $"{u.FirstName} {u.LastName}",
+                email = u.Email,
+                phone = u.PhoneNumber,
+                role = u.Role.ToString(),
+                isActive = u.IsActive,
+                joinedAt = u.CreatedAt,
+                enrollmentCount = db.Enrollments.Count(e => e.UserId == u.Id),
+                examAttempts = db.MockTestAttempts.Count(a => a.UserId == u.Id),
+                examPassed = db.MockTestAttempts.Count(a => a.UserId == u.Id && a.Passed),
+                avgScore = db.MockTestAttempts.Any(a => a.UserId == u.Id)
+                    ? db.MockTestAttempts.Where(a => a.UserId == u.Id).Average(a => (double)a.ScorePercent) : 0,
+                latestExam = db.MockTestAttempts
+                    .Where(a => a.UserId == u.Id)
+                    .OrderByDescending(a => a.StartedAt)
+                    .Select(a => new {
+                        examTitle = a.MockTest.Title,
+                        scorePercent = a.ScorePercent,
+                        passed = a.Passed,
+                        completedAt = a.CompletedAt
+                    }).FirstOrDefault()
+            }).ToListAsync();
+
+        // All exams with attempt stats
+        var exams = await db.MockTests
+            .Where(m => m.OrganizationId == orgId)
+            .Select(m => new {
+                id = m.Id,
+                title = m.Title,
+                status = m.Status.ToString(),
+                totalQ = m.TotalQuestions,
+                attempts = db.MockTestAttempts.Count(a => a.MockTestId == m.Id),
+                passed = db.MockTestAttempts.Count(a => a.MockTestId == m.Id && a.Passed),
+                avgScore = db.MockTestAttempts.Any(a => a.MockTestId == m.Id)
+                    ? db.MockTestAttempts.Where(a => a.MockTestId == m.Id).Average(a => (double)a.ScorePercent) : 0,
+                passRate = db.MockTestAttempts.Any(a => a.MockTestId == m.Id)
+                    ? db.MockTestAttempts.Count(a => a.MockTestId == m.Id && a.Passed) * 100.0
+                      / db.MockTestAttempts.Count(a => a.MockTestId == m.Id) : 0,
+                linkedCourse = m.Course != null ? m.Course.Title : null
+            }).ToListAsync();
+
+        return Ok(new
+        {
+            org = new { id = org.Id, name = org.Name, logoUrl = org.LogoUrl, isActive = org.IsActive },
+            summary = new
+            {
+                totalUsers = users.Count,
+                students = users.Count(u => u.role == "Student"),
+                instructors = users.Count(u => u.role == "Instructor"),
+                totalExams = exams.Count,
+                totalAttempts = exams.Sum(e => e.attempts),
+                overallPassRate = exams.Sum(e => e.attempts) > 0
+                    ? Math.Round(exams.Sum(e => e.passed) * 100.0 / exams.Sum(e => e.attempts), 1) : 0
+            },
+            users,
+            exams
+        });
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
     // Admin (legacy, kept for compatibility) — basic totals only
     // ════════════════════════════════════════════════════════════════════════
     [HttpGet("admin")]
@@ -152,7 +234,12 @@ public class DashboardController(LmsDbContext db) : ControllerBase
                 completionRate = c.Enrollments.Any()
                     ? c.Enrollments.Count(e => e.Status == EnrollmentStatus.Completed) * 100.0 / c.Enrollments.Count()
                     : 0.0,
-                averageRating = c.Ratings.Any() ? c.Ratings.Average(r => (double)r.Rating) : 0.0
+                averageRating = c.Ratings.Any() ? c.Ratings.Average(r => (double)r.Rating) : 0.0,
+                // Linked exam ID so admin can navigate directly to exam attempts
+                linkedExamId = db.MockTests
+                    .Where(m => m.CourseId == c.Id)
+                    .Select(m => (int?)m.Id)
+                    .FirstOrDefault()
             })
             .OrderByDescending(c => c.enrollments)
             .Take(10)
@@ -362,6 +449,7 @@ public class DashboardController(LmsDbContext db) : ControllerBase
                     .OrderByDescending(a => a.StartedAt)
                     .Select(a => new {
                         attemptId = a.Id,
+                        examId = a.MockTestId,
                         scorePercent = a.ScorePercent,
                         passed = a.Passed,
                         completedAt = a.CompletedAt,
@@ -371,10 +459,16 @@ public class DashboardController(LmsDbContext db) : ControllerBase
             })
             .ToListAsync();
 
+        var linkedExamId = await db.MockTests
+            .Where(m => m.CourseId == courseId)
+            .Select(m => (int?)m.Id)
+            .FirstOrDefaultAsync();
+
         return Ok(new
         {
             courseId,
             courseTitle = course.Title,
+            linkedExamId,
             totalEnrolled = students.Count,
             completed = students.Count(s => s.status == "Completed"),
             passed = students.Count(s => s.examAttempt != null && s.examAttempt.passed),

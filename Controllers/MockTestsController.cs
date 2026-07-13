@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiniExcelLibs;
 
-
 namespace LMS.API.Controllers;
 
 [ApiController, Route("api/mocktests")]
@@ -464,28 +463,28 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
         attempt.Rank = allScores.IndexOf(attempt.Id) + 1;
         await db.SaveChangesAsync();
 
-        // Send exam result email after 30-minute delay (fire and forget)
-        var studentEmail = (await db.Users.Include(u => u.Organization)
-            .FirstOrDefaultAsync(u => u.Id == attempt.UserId));
-        if (studentEmail?.Email is not null)
+        // Send exam result email immediately (fire and forget)
+        var student = await db.Users.Include(u => u.Organization)
+            .FirstOrDefaultAsync(u => u.Id == attempt.UserId);
+        if (student?.Email is not null)
         {
-            var emailTo = studentEmail.Email;
-            var emailName = studentEmail.FirstName;
-            var emailOrg = studentEmail.Organization?.Name ?? "Your Organization";
-            var examTitle = attempt.MockTest.Title;
-            var finalScore = scorePct;
-            var finalPassed = passed;
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromMinutes(30));
-                    await emailService.SendExamResultAsync(emailTo, emailName, examTitle, finalScore, finalPassed, emailOrg);
-                    logger.LogInformation("Exam result email sent to {Email} after 30-min delay", emailTo);
+                    await emailService.SendExamResultAsync(
+                        student.Email,
+                        student.FirstName,
+                        attempt.MockTest.Title,
+                        scorePct,
+                        passed,
+                        student.Organization?.Name ?? "Your Organization"
+                    );
+                    logger.LogInformation("Exam result email sent immediately to {Email}", student.Email);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Delayed exam result email failed for {Email}", emailTo);
+                    logger.LogError(ex, "Exam result email failed for {Email}", student.Email);
                 }
             });
         }
@@ -527,6 +526,38 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
     }
 
     // ─── Attempt result detail ─────────────────────────────────
+    // ─── Admin: manually resend exam result email ──────────────
+    [HttpPost("attempt/{attemptId}/send-result-email")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> ResendResultEmail(int attemptId, [FromServices] IEmailService emailService)
+    {
+        var attempt = await db.MockTestAttempts
+            .Include(a => a.MockTest)
+            .Include(a => a.Student).ThenInclude(s => s.Organization)
+            .FirstOrDefaultAsync(a => a.Id == attemptId);
+
+        if (attempt is null) return NotFound(new { message = "Attempt not found" });
+        if (attempt.Student?.Email is null) return BadRequest(new { message = "Student has no email" });
+
+        await emailService.SendExamResultAsync(
+            attempt.Student.Email,
+            attempt.Student.FirstName,
+            attempt.MockTest.Title,
+            attempt.ScorePercent,
+            attempt.Passed,
+            attempt.Student.Organization?.Name ?? "Your Organization"
+        );
+
+        return Ok(new
+        {
+            message = $"Result email sent to {attempt.Student.Email}",
+            to = attempt.Student.Email,
+            score = attempt.ScorePercent,
+            passed = attempt.Passed,
+            examTitle = attempt.MockTest.Title
+        });
+    }
+
     // ─── Admin: all attempts for an exam (for manual paper correction) ─
     [HttpGet("{testId}/attempts")]
     [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
