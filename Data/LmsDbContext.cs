@@ -259,5 +259,7 @@ public class LmsDbContext(DbContextOptions<LmsDbContext> options) : DbContext(op
         b.Entity<BatchStudent>()
             .HasOne(s => s.User).WithMany()
             .HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.SetNull);
-    }
+   
+}
+    public DbSet<BenchResource> BenchResources => Set<BenchResource>();
 }

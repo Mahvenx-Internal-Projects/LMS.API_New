@@ -375,6 +375,7 @@ public class MockTestQuestion
     public int Marks { get; set; } = 1;
     public int NegativeMarks { get; set; } = 0;
     public int DisplayOrder { get; set; }
+    public bool IsActive { get; set; } = true; // false = hidden from exam, not shown to students
     public int MockTestId { get; set; }
     public MockTest MockTest { get; set; } = null!;
     public ICollection<MockTestOption> Options { get; set; } = [];
@@ -906,4 +907,37 @@ public class TestCase
     public int DisplayOrder { get; set; }
     public int CodingQuestionId { get; set; }
     public CodingQuestion CodingQuestion { get; set; } = null!;
+}
+
+// ── Bench Resources ────────────────────────────────────────────
+public enum BenchDomain
+{
+    DotNet, Java, Python, SAP, ServiceNow, React, Angular,
+    FullStack, DevOps, QA, DataScience, Mobile, Other
+}
+
+public enum BenchStatus { Available, Deployed, OnHold }
+public enum CandidateType { Fresher, Experienced }
+
+public class BenchResource
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public CandidateType CandidateType { get; set; } = CandidateType.Fresher;
+    public double ExperienceYears { get; set; } = 0;
+    public string CurrentLocation { get; set; } = "";
+    public string PreferredLocation { get; set; } = ""; // where they want to work
+    public string PreparedLocation { get; set; } = ""; // where they are prepared/available
+    public string SkillSet { get; set; } = ""; // comma-separated
+    public BenchDomain Domain { get; set; } = BenchDomain.Other;
+    public BenchStatus Status { get; set; } = BenchStatus.Available;
+    public decimal? CurrentCTC { get; set; } // Current CTC in LPA
+    public decimal? ExpectedCTC { get; set; } // Expected CTC in LPA
+    public string? Notes { get; set; }
+    public int OrganizationId { get; set; }
+    public Organization Organization { get; set; } = null!;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

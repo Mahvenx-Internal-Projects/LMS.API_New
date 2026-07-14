@@ -5,8 +5,8 @@ using LMS.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-
 using MiniExcelLibs;
+
 
 namespace LMS.API.Controllers;
 
@@ -233,6 +233,19 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
         return NoContent();
     }
 
+    // ─── Toggle question active/inactive ───────────────────────
+    // PATCH /mocktests/questions/{questionId}/toggle-active
+    [HttpPatch("questions/{questionId}/toggle-active")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> ToggleQuestionActive(int questionId)
+    {
+        var q = await db.MockTestQuestions.FindAsync(questionId);
+        if (q is null) return NotFound();
+        q.IsActive = !q.IsActive;
+        await db.SaveChangesAsync();
+        return Ok(new { id = q.Id, isActive = q.IsActive, message = q.IsActive ? "Question is now ACTIVE — shown in exam" : "Question is now INACTIVE — hidden from exam" });
+    }
+
     // ─── Start attempt ─────────────────────────────────────────
     [HttpPost("start")]
     public async Task<IActionResult> Start([FromBody] StartMockAttemptRequest req)
@@ -281,9 +294,9 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
 
             // TotalQuestions=0 means "not configured" — default to 20 random questions.
             // Never serve the entire question bank to the student.
-            // Separate MCQ and Coding questions
-            var mcqQuestions = test.Questions.Where(q => q.QuestionType != MockQuestionType.Coding).ToList();
-            var codingQuestions = test.Questions.Where(q => q.QuestionType == MockQuestionType.Coding).ToList();
+            // Only serve ACTIVE questions (IsActive == true)
+            var mcqQuestions = test.Questions.Where(q => q.QuestionType != MockQuestionType.Coding && q.IsActive).ToList();
+            var codingQuestions = test.Questions.Where(q => q.QuestionType == MockQuestionType.Coding && q.IsActive).ToList();
 
             // How many MCQ to show: TotalQuestions - coding count (always show all coding, max 2)
             var codingToShow = Math.Min(codingQuestions.Count, 2);
@@ -890,6 +903,7 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
                 q.Id, q.Text, q.ImageUrl, q.Explanation, q.ExplanationImageUrl,
                 q.FormulaLatex, q.Topic, q.Difficulty.ToString(),
                 q.QuestionType.ToString(), q.Marks, q.NegativeMarks, q.DisplayOrder,
+                q.IsActive,
                 q.Options.OrderBy(o => o.DisplayOrder)
                     .Select(o => new MockTestOptionDto(o.Id, o.Text, o.ImageUrl, o.IsCorrect, o.DisplayOrder)).ToList()
             )).ToList() : null

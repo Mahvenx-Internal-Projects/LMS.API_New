@@ -4,6 +4,7 @@ using LMS.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LMS.API.Migrations
 {
     [DbContext(typeof(LmsDbContext))]
-    partial class LmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260714151545_AddIsActiveToQuestion")]
+    partial class AddIsActiveToQuestion
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -319,79 +322,6 @@ namespace LMS.API.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("BatchStudents");
-                });
-
-            modelBuilder.Entity("BenchResource", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CandidateType")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<decimal?>("CurrentCTC")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<string>("CurrentLocation")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("Domain")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal?>("ExpectedCTC")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<double>("ExperienceYears")
-                        .HasColumnType("double");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Phone")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("PreferredLocation")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("PreparedLocation")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("SkillSet")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.ToTable("BenchResources");
                 });
 
             modelBuilder.Entity("Cart", b =>
@@ -2321,17 +2251,6 @@ namespace LMS.API.Migrations
                     b.Navigation("Batch");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("BenchResource", b =>
-                {
-                    b.HasOne("Organization", "Organization")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("Cart", b =>
