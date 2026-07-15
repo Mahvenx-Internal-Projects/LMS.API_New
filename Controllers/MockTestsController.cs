@@ -419,6 +419,19 @@ public class MockTestsController(LmsDbContext db, IEmailService emailService, IL
                         marks = 0;
                         isSkipped = true;
                         break;
+                    case MockQuestionType.Coding:
+                        {
+                            // Frontend sends "marks:N" when student ran code and it matched expected output
+                            var textAns = ans!.TextAnswer ?? "";
+                            if (textAns.StartsWith("marks:") && int.TryParse(textAns.Split(':')[1], out int codingMarks))
+                            {
+                                marks = Math.Min(codingMarks, q.Marks); // cap at max marks
+                                isCorrect = marks > 0;
+                                earned += marks;
+                            }
+                            // else marks = 0, admin will enter manually
+                            break;
+                        }
                 }
             }
 
