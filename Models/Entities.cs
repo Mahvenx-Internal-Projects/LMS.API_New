@@ -941,3 +941,63 @@ public class BenchResource
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
+
+// ── Payroll ────────────────────────────────────────────────────
+public enum PayrollStatus { Active, Inactive, OnHold }
+public enum PFRequired { Yes, No }
+public enum GSTApplicable { Yes, No }
+
+public class PayrollRecord
+{
+    public int Id { get; set; }
+    // Personal
+    public string FullName { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string? Address { get; set; }
+    public string? Designation { get; set; }
+    public string? Department { get; set; }
+    public string? Domain { get; set; }
+    public DateTime? JoiningDate { get; set; }
+    // Salary
+    public decimal CTC { get; set; }   // Annual CTC in LPA
+    public decimal? GrossSalary { get; set; }   // Monthly CTC
+    public decimal? BasicSalary { get; set; }
+    public decimal? HRA { get; set; }
+    public decimal? ConveyanceAllowance { get; set; }
+    public decimal? SpecialAllowance { get; set; }
+    // Deductions
+    public PFRequired PFRequired { get; set; } = PFRequired.No;
+    public string? PFNumber { get; set; }
+    public decimal? PFEmployee { get; set; }   // 12% of basic
+    public decimal? PFEmployer { get; set; }   // 12% of basic (company share)
+    public decimal? TDS { get; set; }   // Monthly TDS
+    public decimal? ProfessionTax { get; set; }
+    public decimal? OtherDeductions { get; set; }
+    public decimal? TotalDeductions { get; set; }
+    public decimal? NetSalary { get; set; }
+    // GST
+    public GSTApplicable GSTApplicable { get; set; } = GSTApplicable.No;
+    public decimal? GSTAmount { get; set; }   // 18% of gross
+    // Payroll dates
+    public DateTime PayrollFromDate { get; set; }
+    public DateTime? PayrollToDate { get; set; }
+    public int PaymentDay { get; set; } = 1;
+    // Bank
+    public string? BankName { get; set; }
+    public string? AccountNumber { get; set; }
+    public string? IFSCCode { get; set; }
+    public string? AccountHolderName { get; set; }
+    public string? BankBranch { get; set; }
+    // KYC
+    public string? PANCard { get; set; }
+    public string? AadharCard { get; set; }
+    public string? AdditionalDocuments { get; set; }
+    // Meta
+    public PayrollStatus Status { get; set; } = PayrollStatus.Active;
+    public string? Notes { get; set; }
+    public int OrganizationId { get; set; }
+    public Organization Organization { get; set; } = null!;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
