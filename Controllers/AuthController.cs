@@ -1,11 +1,12 @@
 using LMS.API.Data;
-using LMS.API.Services;
 using LMS.API.DTOs;
 using LMS.API.Models;
+using LMS.API.Services;
 using LMS.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 
 namespace LMS.API.Controllers;
 
@@ -89,4 +90,144 @@ public class AuthController(LmsDbContext db, IAuthService auth, IEmailService em
         u.Role.ToString(), u.IsActive, u.CreatedAt, u.LastLogin,
         u.OrganizationId, u.Organization.Name
     );
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        var user = await db.Users
+            .FirstOrDefaultAsync(u => u.Email == request.Email && u.IsActive);
+
+        if (user == null)
+        {
+            return BadRequest(new
+            {
+                message = "User not found."
+            });
+        }
+
+        // Generate 6-digit OTP
+        var otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+
+        // Save OTP
+        user.ResetOtp = otp;
+        user.ResetOtpExpiry = DateTime.UtcNow.AddMinutes(10);
+
+        await db.SaveChangesAsync();
+
+        try
+        {
+            await emailService.SendOtpAsync(
+                user.Email,
+                user.FirstName,
+                otp);
+
+            return Ok(new
+            {
+                message = "OTP sent successfully."
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send OTP email to {Email}", user.Email);
+
+            return StatusCode(500, new
+            {
+                message = "Failed to send OTP email."
+            });
+        }
+    }
+    [HttpPost("verify-otp")]
+    public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest request)
+    {
+        var user = await db.Users
+            .FirstOrDefaultAsync(u => u.Email == request.Email && u.IsActive);
+
+        if (user == null)
+        {
+            return BadRequest(new
+            {
+                message = "User not found."
+            });
+        }
+
+        if (string.IsNullOrEmpty(user.ResetOtp))
+        {
+            return BadRequest(new
+            {
+                message = "OTP not generated."
+            });
+        }
+
+        if (user.ResetOtp != request.Otp)
+        {
+            return BadRequest(new
+            {
+                message = "Invalid OTP."
+            });
+        }
+
+        if (user.ResetOtpExpiry < DateTime.UtcNow)
+        {
+            return BadRequest(new
+            {
+                message = "OTP has expired."
+            });
+        }
+
+        return Ok(new
+        {
+            message = "OTP verified successfully."
+        });
+    }
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        var user = await db.Users
+            .FirstOrDefaultAsync(u => u.Email == request.Email && u.IsActive);
+
+        if (user == null)
+        {
+            return BadRequest(new
+            {
+                message = "User not found."
+            });
+        }
+
+        if (string.IsNullOrEmpty(user.ResetOtp))
+        {
+            return BadRequest(new
+            {
+                message = "OTP not generated."
+            });
+        }
+
+        if (user.ResetOtp != request.Otp)
+        {
+            return BadRequest(new
+            {
+                message = "Invalid OTP."
+            });
+        }
+
+        if (user.ResetOtpExpiry < DateTime.UtcNow)
+        {
+            return BadRequest(new
+            {
+                message = "OTP has expired."
+            });
+        }
+
+        // Update password
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+
+        // Clear OTP
+        user.ResetOtp = null;
+        user.ResetOtpExpiry = null;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Password reset successfully."
+        });
+    }
 }

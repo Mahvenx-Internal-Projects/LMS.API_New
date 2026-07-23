@@ -6,7 +6,15 @@ namespace LMS.API.DTOs;
 public record LoginRequest(string Email, string Password);
 public record LoginResponse(string Token, string RefreshToken, UserDto User);
 public record RegisterRequest(string FirstName, string LastName, string Email, string Password, int OrganizationId, string? PhoneNumber = null);
+public record ForgotPasswordRequest(string Email);
 
+public record VerifyOtpRequest(string Email, string Otp);
+
+public record ResetPasswordRequest(
+    string Email,
+    string Otp,
+    string NewPassword
+);
 // ─── ORGANIZATION ──────────────────────────────────────────────────────────────
 public record OrganizationDto(
     int Id, string Name, string Slug, string? LogoUrl, string? BannerUrl, string? Tagline,

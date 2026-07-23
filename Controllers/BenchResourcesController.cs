@@ -59,6 +59,7 @@ public class BenchResourcesController(LmsDbContext db) : ControllerBase
                 status = r.Status.ToString(),
                 r.CurrentCTC,
                 r.ExpectedCTC,
+                r.ResumeUrl,
                 r.Notes,
                 r.OrganizationId,
                 r.CreatedAt,
@@ -90,6 +91,7 @@ public class BenchResourcesController(LmsDbContext db) : ControllerBase
             status = r.Status.ToString(),
             r.CurrentCTC,
             r.ExpectedCTC,
+            r.ResumeUrl,
             r.Notes,
             r.OrganizationId,
             r.CreatedAt,
@@ -122,6 +124,7 @@ public class BenchResourcesController(LmsDbContext db) : ControllerBase
             Status = BenchStatus.Available,
             CurrentCTC = req.CurrentCTC,
             ExpectedCTC = req.ExpectedCTC,
+            ResumeUrl = req.ResumeUrl,
             Notes = req.Notes,
             OrganizationId = req.OrganizationId,
             CreatedAt = DateTime.UtcNow,
@@ -160,6 +163,7 @@ public class BenchResourcesController(LmsDbContext db) : ControllerBase
         r.Status = status;
         r.CurrentCTC = req.CurrentCTC;
         r.ExpectedCTC = req.ExpectedCTC;
+        r.ResumeUrl = req.ResumeUrl;
         r.Notes = req.Notes;
         r.UpdatedAt = DateTime.UtcNow;
 
@@ -216,6 +220,7 @@ public record BenchResourceRequest(
     string? Status,
     decimal? CurrentCTC,
     decimal? ExpectedCTC,
+    string? ResumeUrl,
     string? Notes,
     int OrganizationId
 );

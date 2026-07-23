@@ -90,6 +90,8 @@ public class User
     public Organization Organization { get; set; } = null!;
     public string? RefreshToken { get; set; }
     public DateTime? RefreshTokenExpiry { get; set; }
+    public string? ResetOtp { get; set; }
+    public DateTime? ResetOtpExpiry { get; set; }
     public ICollection<UserRoleAssignment> RoleAssignments { get; set; } = [];
     public ICollection<UserDepartment> UserDepartments { get; set; } = [];
 }
@@ -936,6 +938,7 @@ public class BenchResource
     public decimal? CurrentCTC { get; set; } // Current CTC in LPA
     public decimal? ExpectedCTC { get; set; } // Expected CTC in LPA
     public string? Notes { get; set; }
+    public string? ResumeUrl { get; set; }
     public int OrganizationId { get; set; }
     public Organization Organization { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
