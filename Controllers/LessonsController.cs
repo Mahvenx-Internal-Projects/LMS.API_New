@@ -16,7 +16,9 @@ public record LessonDto(
     int ModuleId, string ModuleTitle,
     string? VideoUrl, string? FileUrl, string? Content,
     List<ContentBlock> ContentBlocks,
-    List<LessonResourceDto> Resources
+    List<LessonResourceDto> Resources,
+    int? ParentLessonId = null,
+    List<LessonDto>? ChildLessons = null
 );
 
 public record LessonResourceDto(int Id, string Title, string FileUrl, long FileSizeBytes, string Type, int DisplayOrder);
@@ -25,14 +27,16 @@ public record CreateLessonRequest(
     string Title, string? Description,
     string Type, bool IsPreview, bool IsPublished,
     int DisplayOrder, int DurationSecs, int ModuleId,
-    string? VideoUrl, string? FileUrl, string? Content
+    string? VideoUrl, string? FileUrl, string? Content,
+    int? ParentLessonId = null
 );
 
 public record UpdateLessonRequest(
     string? Title, string? Description,
     string? Type, bool? IsPreview, bool? IsPublished,
     int? DisplayOrder, int? DurationSecs,
-    string? VideoUrl, string? FileUrl, string? Content
+    string? VideoUrl, string? FileUrl, string? Content,
+    int? ParentLessonId = null
 );
 
 public record SaveContentBlocksRequest(List<ContentBlock> Blocks);
@@ -46,13 +50,38 @@ public class LessonsController(LmsDbContext db) : ControllerBase
     [HttpGet("module/{moduleId}")]
     public async Task<IActionResult> GetByModule(int moduleId)
     {
-        var lessons = await db.Lessons
-            .Include(l => l.Module)
-            .Include(l => l.Resources)
-            .Where(l => l.ModuleId == moduleId)
-            .OrderBy(l => l.DisplayOrder)
-            .ToListAsync();
-        return Ok(lessons.Select(Map));
+        try
+        {
+            // Fetch the whole module's lesson tree in one query, then build
+            // the parent→children structure in memory. Doing the recursion
+            // client-side (in C#, not via N+1 queries) keeps this to a single
+            // round-trip to the database regardless of how deep the tree goes.
+            var allLessons = await db.Lessons
+                .Include(l => l.Module)
+                .Include(l => l.Resources)
+                .Where(l => l.ModuleId == moduleId)
+                .OrderBy(l => l.DisplayOrder)
+                .ToListAsync();
+
+            // Plain Where() filtering instead of a Dictionary<int?, ...>
+            // keyed by a nullable lookup — sidesteps an
+            // ArgumentNullException that TryGetValue(null, ...) threw
+            // during enumeration for root-level lessons (ParentLessonId
+            // == null).
+            LessonDto MapWithChildren(Lesson l)
+            {
+                var kids = allLessons.Where(x => x.ParentLessonId == l.Id).OrderBy(k => k.DisplayOrder).ToList();
+                var children = kids.Select(MapWithChildren).ToList();
+                return Map(l) with { ChildLessons = children };
+            }
+
+            var roots = allLessons.Where(l => l.ParentLessonId == null).OrderBy(l => l.DisplayOrder).ToList();
+            return Ok(roots.Select(MapWithChildren).ToList());
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message, type = ex.GetType().Name });
+        }
     }
 
     [HttpGet("{id}")]
@@ -69,37 +98,87 @@ public class LessonsController(LmsDbContext db) : ControllerBase
     [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
     public async Task<IActionResult> Create([FromBody] CreateLessonRequest req)
     {
-        if (!Enum.TryParse<LessonType>(req.Type, out var lt)) lt = LessonType.Video;
-
-        var lesson = new Lesson
+        try
         {
-            Title = req.Title,
-            Description = req.Description,
-            Type = lt,
-            IsPreview = req.IsPreview,
-            IsPublished = req.IsPublished,
-            DisplayOrder = req.DisplayOrder,
-            DurationSecs = req.DurationSecs,
-            ModuleId = req.ModuleId,
-            VideoUrl = req.VideoUrl,
-            FileUrl = req.FileUrl,
-            Content = req.Content,
-        };
+            if (!Enum.TryParse<LessonType>(req.Type, out var lt)) lt = LessonType.Video;
 
-        var blocks = new List<ContentBlock>();
-        if (lt == LessonType.Video && req.VideoUrl is not null)
-            blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Video, VideoUrl = req.VideoUrl, VideoTitle = req.Title });
-        else if (lt == LessonType.Article && req.Content is not null)
-            blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Text, TextContent = req.Content });
-        else if (lt == LessonType.Audio && req.FileUrl is not null)
-            blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Audio, AudioUrl = req.FileUrl, AudioTitle = req.Title });
+            // A parent lesson, if specified, must exist and belong to the same
+            // module — prevents accidentally building a tree that spans
+            // multiple modules, which would make the module's own lesson list
+            // inconsistent.
+            if (req.ParentLessonId is not null)
+            {
+                var parentExists = await db.Lessons.AnyAsync(p => p.Id == req.ParentLessonId.Value && p.ModuleId == req.ModuleId);
+                if (!parentExists)
+                    return BadRequest(new { message = "Parent lesson not found in this module" });
+            }
 
-        if (blocks.Any())
-            lesson.ContentBlocksJson = ContentBlocks.Serialize(blocks);
+            var lesson = new Lesson
+            {
+                Title = req.Title,
+                Description = req.Description,
+                Type = lt,
+                IsPreview = req.IsPreview,
+                IsPublished = req.IsPublished,
+                DisplayOrder = req.DisplayOrder,
+                DurationSecs = req.DurationSecs,
+                ModuleId = req.ModuleId,
+                ParentLessonId = req.ParentLessonId,
+                VideoUrl = req.VideoUrl,
+                FileUrl = req.FileUrl,
+                Content = req.Content,
+            };
 
-        db.Lessons.Add(lesson);
-        await db.SaveChangesAsync();
-        return CreatedAtAction(nameof(Get), new { id = lesson.Id }, Map(lesson));
+            var blocks = new List<ContentBlock>();
+            if (lt == LessonType.Video && req.VideoUrl is not null)
+                blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Video, VideoUrl = req.VideoUrl, VideoTitle = req.Title });
+            else if (lt == LessonType.Article && req.Content is not null)
+                blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Text, TextContent = req.Content });
+            else if (lt == LessonType.Audio && req.FileUrl is not null)
+                blocks.Add(new ContentBlock { Order = 0, Type = BlockType.Audio, AudioUrl = req.FileUrl, AudioTitle = req.Title });
+
+            if (blocks.Any())
+                lesson.ContentBlocksJson = ContentBlocks.Serialize(blocks);
+
+            db.Lessons.Add(lesson);
+            await db.SaveChangesAsync();
+
+            // Notify enrolled students of new content — in-app only (no
+            // email; this can happen often while building a course and
+            // would be noisy). Only for published, top-level lessons —
+            // sub-lessons are usually added while still organizing a
+            // lesson's structure, not a standalone "new content" moment.
+            if (lesson.IsPublished && lesson.ParentLessonId is null)
+            {
+                try
+                {
+                    var courseInfo = await db.Modules
+                        .Where(m => m.Id == lesson.ModuleId)
+                        .Select(m => new { m.CourseId, CourseTitle = m.Course.Title })
+                        .FirstOrDefaultAsync();
+                    if (courseInfo is not null)
+                    {
+                        var studentIds = await db.Enrollments
+                            .Where(e => e.CourseId == courseInfo.CourseId && e.Status == EnrollmentStatus.Active)
+                            .Select(e => e.UserId)
+                            .ToListAsync();
+                        foreach (var studentId in studentIds)
+                            await NotificationHelper.NotifyAsync(db, studentId,
+                                "New lesson added",
+                                $"\"{lesson.Title}\" was added to {courseInfo.CourseTitle}",
+                                NotificationType.General,
+                                $"/dashboard/catalog/{courseInfo.CourseId}");
+                    }
+                }
+                catch { /* notification is non-critical, never block lesson creation on it */ }
+            }
+
+            return CreatedAtAction(nameof(Get), new { id = lesson.Id }, Map(lesson));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message, type = ex.GetType().Name });
+        }
     }
 
     [HttpPut("{id}")]
@@ -118,6 +197,30 @@ public class LessonsController(LmsDbContext db) : ControllerBase
         if (req.FileUrl is not null) l.FileUrl = req.FileUrl;
         if (req.Content is not null) l.Content = req.Content;
         if (req.Type is not null && Enum.TryParse<LessonType>(req.Type, out var lt)) l.Type = lt;
+
+        if (req.ParentLessonId != l.ParentLessonId)
+        {
+            if (req.ParentLessonId == id)
+                return BadRequest(new { message = "A lesson cannot be its own parent" });
+            if (req.ParentLessonId is not null)
+            {
+                // Walk up from the proposed new parent to the root,
+                // checking we never re-encounter this lesson — that would
+                // mean moving a lesson underneath one of its own
+                // descendants, creating a cycle in the tree.
+                var cursor = await db.Lessons.FindAsync(req.ParentLessonId.Value);
+                while (cursor is not null)
+                {
+                    if (cursor.Id == id)
+                        return BadRequest(new { message = "Cannot move a lesson under its own descendant" });
+                    cursor = cursor.ParentLessonId is not null
+                        ? await db.Lessons.FindAsync(cursor.ParentLessonId.Value)
+                        : null;
+                }
+            }
+            l.ParentLessonId = req.ParentLessonId;
+        }
+
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -128,7 +231,26 @@ public class LessonsController(LmsDbContext db) : ControllerBase
     {
         var l = await db.Lessons.FindAsync(id);
         if (l is null) return NotFound();
-        db.Lessons.Remove(l);
+
+        // The self-referencing FK uses Restrict (not Cascade) delete
+        // behavior, so removing a lesson with children would otherwise
+        // fail at the database level. Recursively collect and remove the
+        // whole subtree first, deepest descendants first, then the
+        // lesson itself.
+        var allInModule = await db.Lessons.Where(x => x.ModuleId == l.ModuleId).ToListAsync();
+        var toDelete = new List<Lesson>();
+        void CollectDescendants(int parentId)
+        {
+            foreach (var child in allInModule.Where(x => x.ParentLessonId == parentId))
+            {
+                CollectDescendants(child.Id);
+                toDelete.Add(child);
+            }
+        }
+        CollectDescendants(id);
+        toDelete.Add(l);
+
+        db.Lessons.RemoveRange(toDelete);
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -258,6 +380,13 @@ public class LessonsController(LmsDbContext db) : ControllerBase
     }
 
     // ─── Progress ─────────────────────────────────────────────
+    // req.WatchedSeconds is the SECONDS WATCHED SINCE THE LAST SAVE (a
+    // delta), not a running total. The frontend resets its own counter to 0
+    // each time a lesson opens (so Next/Prev navigation can't mix one
+    // lesson's time into another's), then sends small periodic deltas as
+    // it plays. The backend's job is simply to add each delta onto
+    // WatchedSeconds, so multiple separate viewing sessions accumulate
+    // correctly instead of the latest session overwriting earlier ones.
     [HttpPost("progress")]
     public async Task<IActionResult> UpdateProgress([FromBody] UpdateProgressRequest req)
     {
@@ -269,9 +398,10 @@ public class LessonsController(LmsDbContext db) : ControllerBase
             lp = new LessonProgress { UserId = userId, LessonId = req.LessonId };
             db.LessonProgresses.Add(lp);
         }
-        lp.WatchedSeconds = req.WatchedSeconds;
+
+        lp.WatchedSeconds += Math.Max(0, req.WatchedSeconds);
         lp.LastPositionSec = req.LastPositionSec;
-        lp.IsCompleted = req.IsCompleted;
+        lp.IsCompleted = lp.IsCompleted || req.IsCompleted; // never un-complete a lesson
         lp.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
@@ -348,7 +478,8 @@ public class LessonsController(LmsDbContext db) : ControllerBase
         l.ModuleId, l.Module?.Title ?? "",
         l.VideoUrl, l.FileUrl, l.Content,
         ContentBlocks.Parse(l.ContentBlocksJson).OrderBy(b => b.Order).ToList(),
-        l.Resources.Select(MapResource).ToList()
+        l.Resources.Select(MapResource).ToList(),
+        l.ParentLessonId
     );
 
     static LessonResourceDto MapResource(LessonResource r) => new(
@@ -388,10 +519,21 @@ public class LessonsController(LmsDbContext db) : ControllerBase
                 .AnyAsync(cert => cert.UserId == userId && cert.CourseId == courseId);
             if (!alreadyHasCert)
             {
+                // OrganizationId is required (non-nullable FK) on Certificate
+                // but was never being set here, defaulting to 0 — which has
+                // no matching Organization row and crashed the FK
+                // constraint the moment a student actually completed a
+                // course. Fetch the course's real OrganizationId instead.
+                var orgId = await db.Courses
+                    .Where(c => c.Id == courseId)
+                    .Select(c => c.OrganizationId)
+                    .FirstOrDefaultAsync();
+
                 db.Certificates.Add(new Certificate
                 {
                     UserId = userId,
                     CourseId = courseId,
+                    OrganizationId = orgId,
                     IssuedAt = DateTime.UtcNow,
                     TotalWatchMinutes = enrollment.TotalWatchSeconds / 60,
                     CertificateNumber = Guid.NewGuid().ToString("N")[..12].ToUpper()

@@ -1,4 +1,4 @@
-using LMS.API.Data;
+﻿using LMS.API.Data;
 using LMS.API.DTOs;
 using LMS.API.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -16,13 +16,15 @@ public class OrganizationsController(LmsDbContext db) : ControllerBase
     {
         var q = db.Organizations.AsQueryable();
         var total = await q.CountAsync();
-        var items = await q.OrderByDescending(o => o.CreatedAt).Skip((page - 1) * size).Take(size)
-            .Select(o => MapOrg(o, db.Users.Count(u => u.OrganizationId == o.Id), db.Courses.Count(c => c.OrganizationId == o.Id)))
-            .ToListAsync();
-        return Ok(new PagedResult<OrganizationDto>(items, total, page, size, (int)Math.Ceiling(total / (double)size)));
+        var items = await q.OrderByDescending(o => o.CreatedAt).Skip((page - 1) * size).Take(size).ToListAsync();
+        var dtos = items.Select(o => MapOrg(o,
+            db.Users.Count(u => u.OrganizationId == o.Id),
+            db.Courses.Count(c => c.OrganizationId == o.Id))).ToList();
+        return Ok(new PagedResult<OrganizationDto>(dtos, total, page, size, (int)Math.Ceiling(total / (double)size)));
     }
 
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<IActionResult> Get(int id)
     {
         var o = await db.Organizations.FindAsync(id);
@@ -38,7 +40,6 @@ public class OrganizationsController(LmsDbContext db) : ControllerBase
     {
         var slug = req.Name.ToLower().Replace(" ", "-");
         if (await db.Organizations.AnyAsync(o => o.Slug == slug)) slug = $"{slug}-{Random.Shared.Next(1000, 9999)}";
-
         var org = new Organization
         {
             Name = req.Name,
@@ -71,6 +72,28 @@ public class OrganizationsController(LmsDbContext db) : ControllerBase
         if (req.PortalUrl is not null) org.PortalUrl = req.PortalUrl;
         if (req.IsActive is not null) org.IsActive = req.IsActive.Value;
 
+        // ── Homepage feature flags ──────────────────────────────────────
+        if (req.ShowScrollingBanner is not null) org.ShowScrollingBanner = req.ShowScrollingBanner.Value;
+        if (req.ScrollingBannerText is not null) org.ScrollingBannerText = req.ScrollingBannerText;
+        if (req.ShowReferralOffer is not null) org.ShowReferralOffer = req.ShowReferralOffer.Value;
+        if (req.ReferralOfferText is not null) org.ReferralOfferText = req.ReferralOfferText;
+        if (req.ShowCourseBatches is not null) org.ShowCourseBatches = req.ShowCourseBatches.Value;
+        if (req.ShowAllCourses is not null) org.ShowAllCourses = req.ShowAllCourses.Value;
+        if (req.ShowContactUs is not null) org.ShowContactUs = req.ShowContactUs.Value;
+        if (req.ShowAboutUs is not null) org.ShowAboutUs = req.ShowAboutUs.Value;
+        if (req.ShowOpenings is not null) org.ShowOpenings = req.ShowOpenings.Value;
+
+        // ── Content fields ───────────────────────────────────────────────
+        if (req.AboutUsContent is not null) org.AboutUsContent = req.AboutUsContent;
+        if (req.ContactEmail is not null) org.ContactEmail = req.ContactEmail;
+        if (req.ContactPhone is not null) org.ContactPhone = req.ContactPhone;
+        if (req.ContactAddress is not null) org.ContactAddress = req.ContactAddress;
+        if (req.ContactMapEmbed is not null) org.ContactMapEmbed = req.ContactMapEmbed;
+        if (req.OpeningsContent is not null) org.OpeningsContent = req.OpeningsContent;
+        if (req.CustomMenuJson is not null) org.CustomMenuJson = req.CustomMenuJson;
+        if (req.AboutUsTemplate is not null) org.AboutUsTemplate = req.AboutUsTemplate;
+        if (req.ContactUsTemplate is not null) org.ContactUsTemplate = req.ContactUsTemplate;
+
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -90,6 +113,16 @@ public class OrganizationsController(LmsDbContext db) : ControllerBase
         o.Id, o.Name, o.Slug, o.LogoUrl, o.BannerUrl, o.Tagline,
         o.PrimaryColor, o.SecondaryColor, o.AccentColor,
         o.ThemeFont, o.Website, o.PortalUrl,
-        o.IsActive, o.CreatedAt, uc, cc
+        o.IsActive, o.CreatedAt, uc, cc,
+        // Homepage feature flags
+        o.ShowScrollingBanner, o.ScrollingBannerText,
+        o.ShowReferralOffer, o.ReferralOfferText,
+        o.ShowCourseBatches, o.ShowAllCourses,
+        o.ShowContactUs, o.ShowAboutUs, o.ShowOpenings,
+        // Content
+        o.AboutUsContent, o.ContactEmail, o.ContactPhone,
+        o.ContactAddress, o.ContactMapEmbed, o.OpeningsContent,
+        o.CustomMenuJson,
+        o.AboutUsTemplate, o.ContactUsTemplate
     );
 }

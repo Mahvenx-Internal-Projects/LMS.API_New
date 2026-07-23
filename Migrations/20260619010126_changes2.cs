@@ -5,27 +5,20 @@
 namespace LMS.API.Migrations
 {
     /// <inheritdoc />
-    public partial class AddOrgThemeFields : Migration
+    public partial class changes2 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
-                name: "AuthorizedBy",
+                name: "AboutUsTemplate",
                 table: "Organizations",
                 type: "longtext",
                 nullable: true)
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.AddColumn<string>(
-                name: "AuthorizedTitle",
-                table: "Organizations",
-                type: "longtext",
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.AddColumn<string>(
-                name: "SignatureUrl",
+                name: "ContactUsTemplate",
                 table: "Organizations",
                 type: "longtext",
                 nullable: true)
@@ -36,15 +29,11 @@ namespace LMS.API.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "AuthorizedBy",
+                name: "AboutUsTemplate",
                 table: "Organizations");
 
             migrationBuilder.DropColumn(
-                name: "AuthorizedTitle",
-                table: "Organizations");
-
-            migrationBuilder.DropColumn(
-                name: "SignatureUrl",
+                name: "ContactUsTemplate",
                 table: "Organizations");
         }
     }

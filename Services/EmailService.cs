@@ -22,12 +22,12 @@ public interface IEmailService
 
 public class EmailService(IConfiguration config, ILogger<EmailService> logger) : IEmailService
 {
-    readonly string _host      = config["Smtp:Host"]!;
-    readonly int    _port      = int.Parse(config["Smtp:Port"] ?? "587");
-    readonly string _user      = config["Smtp:User"]!;
-    readonly string _password  = config["Smtp:Password"]!;
-    readonly string _from      = config["Smtp:From"]!;
-    readonly string _fromName  = config["Smtp:FromName"]!;
+    readonly string _host = config["Smtp:Host"]!;
+    readonly int _port = int.Parse(config["Smtp:Port"] ?? "587");
+    readonly string _user = config["Smtp:User"]!;
+    readonly string _password = config["Smtp:Password"]!;
+    readonly string _from = config["Smtp:From"]!;
+    readonly string _fromName = config["Smtp:FromName"]!;
 
     async Task SendAsync(string to, string toName, string subject, string html)
     {
@@ -37,19 +37,45 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
         message.Subject = subject;
         message.Body = new TextPart("html") { Text = html };
 
-        try
+        // Try the configured host/port/security mode first. GoDaddy's mail
+        // servers (smtpout.secureserver.net) commonly need SSL-on-465
+        // rather than STARTTLS-on-587 depending on the account type — if
+        // the primary attempt fails, retry once with the other common
+        // combination before giving up, so a single misconfigured port
+        // doesn't silently block every email.
+        var attempts = new[]
         {
-            using var smtp = new SmtpClient();
-            await smtp.ConnectAsync(_host, _port, SecureSocketOptions.StartTls);
-            await smtp.AuthenticateAsync(_user, _password);
-            await smtp.SendAsync(message);
-            await smtp.DisconnectAsync(true);
-            logger.LogInformation("Email sent to {To}: {Subject}", to, subject);
-        }
-        catch (Exception ex)
+            (_host, _port, SecureSocketOptions.StartTls),
+            (_host, 465, SecureSocketOptions.SslOnConnect),
+        };
+
+        Exception? lastError = null;
+        foreach (var (host, port, security) in attempts)
         {
-            logger.LogError(ex, "Failed to send email to {To}: {Subject}", to, subject);
+            try
+            {
+                using var smtp = new SmtpClient();
+                logger.LogInformation("Connecting to SMTP {Host}:{Port} ({Security}) as {User}", host, port, security, _user);
+                await smtp.ConnectAsync(host, port, security);
+                await smtp.AuthenticateAsync(_user, _password);
+                await smtp.SendAsync(message);
+                await smtp.DisconnectAsync(true);
+                logger.LogInformation("Email sent to {To}: {Subject} (via {Host}:{Port})", to, subject, host, port);
+                return; // success — stop trying further combinations
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                logger.LogWarning("SMTP attempt via {Host}:{Port} failed: {Message}", host, port, ex.Message);
+            }
         }
+
+        // Every attempt failed — log the full exception (including
+        // MailKit's specific SmtpCommandException/AuthenticationException
+        // detail, which ex.Message alone often truncates) so "why isn't
+        // email sending" is actually diagnosable from the logs.
+        logger.LogError(lastError, "Failed to send email to {To}: {Subject} after trying all SMTP configurations. Host={Host} User={User}. Full exception: {Exception}",
+            to, subject, _host, _user, lastError?.ToString());
     }
 
     static string BaseTemplate(string brandColor, string orgName, string content)
@@ -90,7 +116,7 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
   <div class=""wrapper"">
     <div class=""header"">
       <h1>{orgName}</h1>
-      <p>Learning Management System</p>
+      <p>Recruitment Process</p>
     </div>
     <div class=""body"">
       {content}
@@ -229,22 +255,97 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
 
     public async Task SendExamResultAsync(string to, string name, string examTitle, int score, bool passed, string orgName)
     {
-        var badge = passed ? "<span class='badge badge-green'>PASSED ✓</span>" : "<span class='badge badge-red'>FAILED ✗</span>";
-        var msg   = passed
-            ? "You've passed the exam! Your certificate will be issued shortly."
-            : "Don't give up! Review the course material and try again.";
-        var content = $"""
-            <p class="greeting">📝 Exam Results: {examTitle}</p>
-            <p class="text">Hi {name}, your exam has been graded.</p>
-            <div class="card" style="text-align:center;">
-              <h3>Your Score</h3>
-              <p style="font-size:48px; font-weight:900; color:{(passed ? "#10b981" : "#ef4444")}">{score}%</p>
-              <p style="margin-top:8px">{badge}</p>
+        var color = passed ? "#10b981" : "#ef4444";
+        var emoji = passed ? "🎉" : "📊";
+        var badge = passed
+            ? "<span class='badge badge-green'>✅ QUALIFIED</span>"
+            : "<span class='badge badge-red'>❌ NOT QUALIFIED</span>";
+        var headline = passed
+            ? $"Congratulations, {name}! You Qualified! 🎉"
+            : $"Thank You for Attending, {name}";
+        var message = passed
+            ? $"<p class='text'>You have successfully cleared the <strong>{examTitle}</strong> assessment. <strong>{orgName}</strong> will contact you shortly with details about the next round of the selection process.</p>"
+            : $"<p class='text'>Thank you for attending the <strong>{examTitle}</strong> assessment hosted by <strong>{orgName}</strong>. Unfortunately, your score did not meet the required threshold for this round. We encourage you to keep practicing and try again in future opportunities.</p>";
+        var nextSteps = passed
+            ? "<div class='card' style='border-left:4px solid #10b981;background:#f0fdf4'><h3 style='color:#065f46'>What's Next?</h3><p style='color:#065f46'>Our team will reach out to you via email or phone with further instructions. Please keep an eye on your inbox.</p></div>"
+            : "<div class='card' style='border-left:4px solid #f59e0b;background:#fffbeb'><h3 style='color:#92400e'>Keep Going!</h3><p style='color:#92400e'>Review the course material, strengthen your weak areas, and look out for future assessment opportunities from <strong>" + orgName + "</strong>.</p></div>";
+
+        var loginSection = $@"
+            <div class='card' style='border-left:4px solid #6366f1;background:#f5f3ff;margin-top:24px;'>
+              <h3 style='color:#4338ca;'>📋 View Your Detailed Marks</h3>
+              <p style='color:#555;font-size:14px;margin-top:8px;'>
+                To view your complete exam report including question-wise marks, please login to the portal using the same username and password you used at the time of registration:
+              </p>
+              <p style='margin-top:16px;text-align:center;'>
+                <a href='https://recruitment.mahvenx.com' style='display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4338ca);color:white;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;'>
+                  🔐 Login to View Your Results
+                </a>
+              </p>
+              <table style='width:100%;margin-top:16px;border-collapse:collapse;'>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;width:35%;border-bottom:1px solid #e5e7eb;'>🌐 Portal</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:13px;border-bottom:1px solid #e5e7eb;'>
+                    <a href='https://recruitment.mahvenx.com' style='color:#6366f1;'>recruitment.mahvenx.com</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;border-bottom:1px solid #e5e7eb;'>📧 Username</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:14px;color:#111;border-bottom:1px solid #e5e7eb;'>{to}</td>
+                </tr>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;border-bottom:1px solid #e5e7eb;'>🔑 Password</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:13px;border-bottom:1px solid #e5e7eb;'>Same password you used at the time of registration</td>
+                </tr>
+              </table>
+              <p style='font-size:12px;color:#9ca3af;margin-top:12px;'>
+                💡 Forgot your password? Use the ""Forgot Password"" option on the login page.
+              </p>
             </div>
-            <p class="text">{msg}</p>
-            <a href="#" class="btn">View Results →</a>
+
+            <div class='card' style='border-left:4px solid #10b981;background:#f0fdf4;margin-top:16px;'>
+              <h3 style='color:#065f46;'>📞 For Any Other Queries</h3>
+              <p style='color:#555;font-size:14px;margin-top:8px;'>
+                If you have any questions regarding your results or the recruitment process, please contact our HR team:
+              </p>
+              <table style='width:100%;margin-top:12px;border-collapse:collapse;'>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;width:35%;border-bottom:1px solid #d1fae5;'>📱 Phone / WhatsApp</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:15px;color:#065f46;border-bottom:1px solid #d1fae5;'>
+                    <a href='tel:+919441363687' style='color:#065f46;text-decoration:none;'>+91 94413 63687</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style='padding:10px 0;color:#666;font-size:13px;'>📧 HR Email</td>
+                  <td style='padding:10px 0;font-weight:700;font-size:15px;color:#065f46;'>
+                    <a href='mailto:hr@mahvenx.com' style='color:#065f46;'>hr@mahvenx.com</a>
+                  </td>
+                </tr>
+              </table>
+            </div>";
+
+        var content = $"""
+            <p class="greeting">{emoji} {headline}</p>
+            {message}
+            <div class="card" style="text-align:center; border-left:none; border:3px solid {color}; margin: 24px 0;">
+              <h3 style="color:#888; font-size:12px; text-transform:uppercase; letter-spacing:1px;">Your Score</h3>
+              <p style="font-size:56px; font-weight:900; color:{color}; line-height:1;">{score}%</p>
+              <p style="margin-top:8px;">{badge}</p>
+              <p style="margin-top:8px; font-size:13px; color:#888;">Required: 80% to qualify</p>
+            </div>
+            {nextSteps}
+            {loginSection}
+            <p class="text" style="font-size:13px; color:#999; margin-top:24px;">
+              Assessment: <strong>{examTitle}</strong><br/>
+              Conducted by: <strong>{orgName}</strong><br/>
+              Date: <strong>{DateTime.UtcNow:MMMM dd, yyyy}</strong>
+            </p>
             """;
-        await SendAsync(to, name, $"Exam Result: {examTitle} — {score}%", BaseTemplate(passed ? "#10b981" : "#ef4444", orgName, content));
+
+        var subject = passed
+            ? $"🎉 You Qualified! — {examTitle} Result ({score}%)"
+            : $"📊 Exam Result — {examTitle} ({score}%)";
+
+        await SendAsync(to, name, subject, BaseTemplate(color, orgName, content));
     }
 
     public async Task SendLiveClassNotificationAsync(string to, string name, string title, DateTime scheduledAt, int durationMins, string platform, string meetingLink, string meetingId, string meetingPassword, string courseTitle)

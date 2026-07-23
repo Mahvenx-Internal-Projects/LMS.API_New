@@ -4,6 +4,7 @@ using LMS.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LMS.API.Migrations
 {
     [DbContext(typeof(LmsDbContext))]
-    partial class LmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260709205529_AddOrgThemeFields4")]
+    partial class AddOrgThemeFields4
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -319,82 +322,6 @@ namespace LMS.API.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("BatchStudents");
-                });
-
-            modelBuilder.Entity("BenchResource", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CandidateType")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<decimal?>("CurrentCTC")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<string>("CurrentLocation")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("Domain")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal?>("ExpectedCTC")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<double>("ExperienceYears")
-                        .HasColumnType("double");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Phone")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("PreferredLocation")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("PreparedLocation")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ResumeUrl")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("SkillSet")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.ToTable("BenchResources");
                 });
 
             modelBuilder.Entity("Cart", b =>
@@ -1539,9 +1466,6 @@ namespace LMS.API.Migrations
                     b.Property<string>("ImageUrl")
                         .HasColumnType("longtext");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
                     b.Property<int>("Marks")
                         .HasColumnType("int");
 
@@ -1924,147 +1848,6 @@ namespace LMS.API.Migrations
                     b.ToTable("PaymentTransactions");
                 });
 
-            modelBuilder.Entity("PayrollRecord", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AadharCard")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("AccountHolderName")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("AccountNumber")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("AdditionalDocuments")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Address")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("BankBranch")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("BankName")
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal?>("BasicSalary")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal>("CTC")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("ConveyanceAllowance")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Department")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Designation")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Domain")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("FullName")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal?>("GSTAmount")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<int>("GSTApplicable")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("GrossSalary")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("HRA")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<string>("IFSCCode")
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("JoiningDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<decimal?>("NetSalary")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("OtherDeductions")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<string>("PANCard")
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal?>("PFEmployee")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("PFEmployer")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<string>("PFNumber")
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("PFRequired")
-                        .HasColumnType("int");
-
-                    b.Property<int>("PaymentDay")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("PayrollFromDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("PayrollToDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Phone")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal?>("ProfessionTax")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("SpecialAllowance")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("TDS")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("TotalDeductions")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.ToTable("PayrollRecords");
-                });
-
             modelBuilder.Entity("QuestionOption", b =>
                 {
                     b.Property<int>("Id")
@@ -2263,12 +2046,6 @@ namespace LMS.API.Migrations
                         .HasColumnType("longtext");
 
                     b.Property<DateTime?>("RefreshTokenExpiry")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("ResetOtp")
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("ResetOtpExpiry")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int>("Role")
@@ -2471,17 +2248,6 @@ namespace LMS.API.Migrations
                     b.Navigation("Batch");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("BenchResource", b =>
-                {
-                    b.HasOne("Organization", "Organization")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("Cart", b =>
@@ -2969,17 +2735,6 @@ namespace LMS.API.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("PayrollRecord", b =>
-                {
-                    b.HasOne("Organization", "Organization")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("QuestionOption", b =>

@@ -4,6 +4,7 @@ using LMS.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LMS.API.Migrations
 {
     [DbContext(typeof(LmsDbContext))]
-    partial class LmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719161041_AddOrgThemeFields5")]
+    partial class AddOrgThemeFields5
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -375,9 +378,6 @@ namespace LMS.API.Migrations
 
                     b.Property<string>("PreparedLocation")
                         .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ResumeUrl")
                         .HasColumnType("longtext");
 
                     b.Property<string>("SkillSet")
@@ -1944,8 +1944,8 @@ namespace LMS.API.Migrations
                     b.Property<string>("AdditionalDocuments")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Address")
-                        .HasColumnType("longtext");
+                    b.Property<decimal?>("Allowances")
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<string>("BankBranch")
                         .HasColumnType("longtext");
@@ -1959,11 +1959,11 @@ namespace LMS.API.Migrations
                     b.Property<decimal>("CTC")
                         .HasColumnType("decimal(65,30)");
 
-                    b.Property<decimal?>("ConveyanceAllowance")
-                        .HasColumnType("decimal(65,30)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<decimal?>("Deductions")
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<string>("Department")
                         .HasColumnType("longtext");
@@ -1982,12 +1982,6 @@ namespace LMS.API.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<decimal?>("GSTAmount")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<int>("GSTApplicable")
-                        .HasColumnType("int");
-
                     b.Property<decimal?>("GrossSalary")
                         .HasColumnType("decimal(65,30)");
 
@@ -1996,9 +1990,6 @@ namespace LMS.API.Migrations
 
                     b.Property<string>("IFSCCode")
                         .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("JoiningDate")
-                        .HasColumnType("datetime(6)");
 
                     b.Property<decimal?>("NetSalary")
                         .HasColumnType("decimal(65,30)");
@@ -2009,17 +2000,8 @@ namespace LMS.API.Migrations
                     b.Property<int>("OrganizationId")
                         .HasColumnType("int");
 
-                    b.Property<decimal?>("OtherDeductions")
-                        .HasColumnType("decimal(65,30)");
-
                     b.Property<string>("PANCard")
                         .HasColumnType("longtext");
-
-                    b.Property<decimal?>("PFEmployee")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("PFEmployer")
-                        .HasColumnType("decimal(65,30)");
 
                     b.Property<string>("PFNumber")
                         .HasColumnType("longtext");
@@ -2040,20 +2022,8 @@ namespace LMS.API.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<decimal?>("ProfessionTax")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("SpecialAllowance")
-                        .HasColumnType("decimal(65,30)");
-
                     b.Property<int>("Status")
                         .HasColumnType("int");
-
-                    b.Property<decimal?>("TDS")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("TotalDeductions")
-                        .HasColumnType("decimal(65,30)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -2263,12 +2233,6 @@ namespace LMS.API.Migrations
                         .HasColumnType("longtext");
 
                     b.Property<DateTime?>("RefreshTokenExpiry")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("ResetOtp")
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("ResetOtpExpiry")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int>("Role")
