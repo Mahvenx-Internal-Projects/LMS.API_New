@@ -55,6 +55,7 @@ public class Organization
 
     // ── Content ────────────────────────────────────────────────────────────────
     public string? AboutUsContent { get; set; }   // HTML
+    public string? ContactUsContent { get; set; }   // HTML — overrides contact fields if set
     public string? ContactEmail { get; set; }
     public string? ContactPhone { get; set; }
     public string? ContactAddress { get; set; }
@@ -86,6 +87,11 @@ public class User
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastLogin { get; set; }
+    // Password reset via OTP
+    public string? PasswordResetOtp { get; set; }
+    public DateTime? PasswordResetOtpExpires { get; set; }
+    public string? PasswordResetToken { get; set; }
+    public DateTime? PasswordResetTokenExpires { get; set; }
     public int OrganizationId { get; set; }
     public Organization Organization { get; set; } = null!;
     public string? RefreshToken { get; set; }
@@ -942,11 +948,12 @@ public class BenchResource
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
-// ── Payroll ────────────────────────────────────────────────────
+// ── Payroll Enums ──────────────────────────────────────────────
 public enum PayrollStatus { Active, Inactive, OnHold }
 public enum PFRequired { Yes, No }
 public enum GSTApplicable { Yes, No }
 
+// ── Payroll Record ─────────────────────────────────────────────
 public class PayrollRecord
 {
     public int Id { get; set; }

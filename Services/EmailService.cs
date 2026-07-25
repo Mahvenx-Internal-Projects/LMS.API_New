@@ -14,6 +14,8 @@ public interface IEmailService
     Task SendOtpAsync(string to, string name, string otp);
     Task SendCoursePublishedAsync(List<string> instructorEmails, string courseTitle, string orgName);
     Task SendExamResultAsync(string to, string name, string examTitle, int score, bool passed, string orgName);
+    Task SendPasswordResetOtpAsync(string to, string name, string otp);
+    Task SendPasswordChangedAsync(string to, string name);
     Task SendLiveClassNotificationAsync(string to, string name, string title, DateTime scheduledAt, int durationMins, string platform, string meetingLink, string meetingId, string meetingPassword, string courseTitle);
     Task SendAssignmentNotificationAsync(string to, string name, string assignmentTitle, DateTime dueDate, string courseTitle);
     Task SendGradeNotificationAsync(string to, string name, string assignmentTitle, int marks, int maxMarks, string feedback, string courseTitle);
@@ -423,6 +425,44 @@ public class EmailService(IConfiguration config, ILogger<EmailService> logger) :
             <p class=""text"" style=""color:#555"">Tips: Be on time, test your internet connection, and keep your documents ready. Best of luck! 🍀</p>";
 
         await SendAsync(to, name, $"Interview Scheduled: {title} on {scheduledAt:MMM dd}", BaseTemplate("#7c3aed", "LMS Portal", content));
+    }
+
+    public async Task SendPasswordResetOtpAsync(string to, string name, string otp)
+    {
+        var content = $"""
+            <p class="greeting">Password Reset Request 🔐</p>
+            <p class="text">Hi <strong>{name}</strong>, we received a request to reset your password.</p>
+            <div class="card" style="text-align:center;border:3px solid #6366f1;margin:24px 0;">
+              <p style="font-size:13px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;">Your OTP</p>
+              <p style="font-size:52px;font-weight:900;color:#6366f1;letter-spacing:12px;line-height:1;">{otp}</p>
+              <p style="font-size:13px;color:#888;margin-top:8px;">Valid for <strong>15 minutes</strong></p>
+            </div>
+            <p class="text">Enter this OTP on the password reset page to continue.</p>
+            <div class="card" style="background:#fff8e1;border-left:4px solid #f59e0b;">
+              <p style="color:#92400e;font-size:13px;">⚠️ If you did not request a password reset, please ignore this email. Your account is safe.</p>
+            </div>
+            <p class="text" style="font-size:12px;color:#999;margin-top:16px;">This OTP will expire at {DateTime.UtcNow.AddMinutes(15):HH:mm} UTC</p>
+            """;
+        await SendAsync(to, name, "🔐 Your Password Reset OTP", BaseTemplate("#6366f1", "Mahvenx", content));
+    }
+
+    public async Task SendPasswordChangedAsync(string to, string name)
+    {
+        var content = $"""
+            <p class="greeting">Password Changed Successfully ✅</p>
+            <p class="text">Hi <strong>{name}</strong>, your password has been changed successfully.</p>
+            <div class="card" style="background:#f0fdf4;border-left:4px solid #10b981;">
+              <p style="color:#065f46;font-size:13px;">✅ Your password was updated on <strong>{DateTime.UtcNow:dd MMM yyyy, HH:mm} UTC</strong></p>
+            </div>
+            <p class="text">You can now login with your new password at:</p>
+            <p style="text-align:center;margin:16px 0;">
+              <a href="https://recruitment.mahvenx.com" class="btn">Login Now</a>
+            </p>
+            <div class="card" style="background:#fff8e1;border-left:4px solid #f59e0b;">
+              <p style="color:#92400e;font-size:13px;">⚠️ If you did not make this change, please contact HR immediately at <strong>hr@mahvenx.com</strong> or call <strong>+91 94413 63687</strong></p>
+            </div>
+            """;
+        await SendAsync(to, name, "✅ Password Changed Successfully", BaseTemplate("#10b981", "Mahvenx", content));
     }
 
 }

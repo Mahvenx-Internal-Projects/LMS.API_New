@@ -85,6 +85,7 @@ public class OrganizationsController(LmsDbContext db) : ControllerBase
 
         // ── Content fields ───────────────────────────────────────────────
         if (req.AboutUsContent is not null) org.AboutUsContent = req.AboutUsContent;
+        if (req.ContactUsContent is not null) org.ContactUsContent = req.ContactUsContent;
         if (req.ContactEmail is not null) org.ContactEmail = req.ContactEmail;
         if (req.ContactPhone is not null) org.ContactPhone = req.ContactPhone;
         if (req.ContactAddress is not null) org.ContactAddress = req.ContactAddress;
@@ -120,7 +121,7 @@ public class OrganizationsController(LmsDbContext db) : ControllerBase
         o.ShowCourseBatches, o.ShowAllCourses,
         o.ShowContactUs, o.ShowAboutUs, o.ShowOpenings,
         // Content
-        o.AboutUsContent, o.ContactEmail, o.ContactPhone,
+        o.AboutUsContent, o.ContactUsContent, o.ContactEmail, o.ContactPhone,
         o.ContactAddress, o.ContactMapEmbed, o.OpeningsContent,
         o.CustomMenuJson,
         o.AboutUsTemplate, o.ContactUsTemplate

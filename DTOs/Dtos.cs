@@ -5,7 +5,7 @@ namespace LMS.API.DTOs;
 // ─── AUTH ──────────────────────────────────────────────────────────────────────
 public record LoginRequest(string Email, string Password);
 public record LoginResponse(string Token, string RefreshToken, UserDto User);
-public record RegisterRequest(string FirstName, string LastName, string Email, string Password, int OrganizationId, string? PhoneNumber = null);
+public record RegisterRequest(string FirstName, string LastName, string Email, string Password, int OrganizationId);
 
 // ─── ORGANIZATION ──────────────────────────────────────────────────────────────
 public record OrganizationDto(
@@ -20,10 +20,10 @@ public record OrganizationDto(
     bool ShowContactUs = true, bool ShowAboutUs = true,
     bool ShowOpenings = false,
     // Content
-    string? AboutUsContent = null, string? ContactEmail = null,
-    string? ContactPhone = null, string? ContactAddress = null,
-    string? ContactMapEmbed = null, string? OpeningsContent = null,
-    string? CustomMenuJson = null,
+    string? AboutUsContent = null, string? ContactUsContent = null,
+    string? ContactEmail = null, string? ContactPhone = null,
+    string? ContactAddress = null, string? ContactMapEmbed = null,
+    string? OpeningsContent = null, string? CustomMenuJson = null,
     // Template selection
     string? AboutUsTemplate = "classic", string? ContactUsTemplate = "classic"
 );
@@ -39,10 +39,10 @@ public record UpdateOrganizationRequest(
     bool? ShowContactUs = null, bool? ShowAboutUs = null,
     bool? ShowOpenings = null,
     // Content
-    string? AboutUsContent = null, string? ContactEmail = null,
-    string? ContactPhone = null, string? ContactAddress = null,
-    string? ContactMapEmbed = null, string? OpeningsContent = null,
-    string? CustomMenuJson = null,
+    string? AboutUsContent = null, string? ContactUsContent = null,
+    string? ContactEmail = null, string? ContactPhone = null,
+    string? ContactAddress = null, string? ContactMapEmbed = null,
+    string? OpeningsContent = null, string? CustomMenuJson = null,
     // Template selection
     string? AboutUsTemplate = null, string? ContactUsTemplate = null
 );
@@ -64,16 +64,17 @@ public record CourseDto(
     int Id, string Title, string? Description, string? ThumbnailUrl,
     string Level, string Status, decimal Price, bool IsFree,
     int DurationMinutes, string? Tags, string? Language,
-    int OrganizationId, string OrganizationName,
+    int OrganizationId, string OrgName,
     int? InstructorId, string? InstructorName,
     int? CategoryId, string? CategoryName,
-    int EnrollmentCount, double AverageRating, int RatingCount,
+    int EnrollmentCount,
+    double AverageRating, int RatingCount,
     DateTime CreatedAt, DateTime UpdatedAt,
-    List<ModuleDto>? Modules,
+    List<ModuleDto>? Modules = null,
     bool EnforceSequentialLessons = false
 );
-public record CreateCourseRequest(string Title, string? Description, string? ThumbnailUrl, string Level, decimal Price, bool IsFree, int? CategoryId, int? InstructorId, int OrganizationId, string? Tags, string? Language = "English", bool EnforceSequentialLessons = false, string? Status = null);
-public record UpdateCourseRequest(string? Title, string? Description, string? ThumbnailUrl, string? Level, string? Status, decimal? Price, bool? IsFree, int? CategoryId, string? Tags, bool? EnforceSequentialLessons = null, int? InstructorId = null);
+public record CreateCourseRequest(string Title, string? Description, string? ThumbnailUrl, string Level, decimal Price, bool IsFree, int CategoryId, int InstructorId, int OrganizationId, string? Tags, string? Language = "English", string? Status = "Draft", bool EnforceSequentialLessons = false);
+public record UpdateCourseRequest(string? Title, string? Description, string? ThumbnailUrl, string? Level, string? Status, decimal? Price, bool? IsFree, int? CategoryId, string? Tags, int? InstructorId = null, bool? EnforceSequentialLessons = null);
 
 // ─── MODULE ────────────────────────────────────────────────────────────────────
 public record ModuleDto(int Id, string Title, string? Description, int DisplayOrder, bool IsPreview, int CourseId, List<object>? Lessons);
@@ -179,9 +180,6 @@ public record UpdateLiveClassRequest(string? Title, string? Description, DateTim
 // ─── MOCK TEST ─────────────────────────────────────────────────────────────────
 public record MockTestDto(int Id, string Title, string? Description, string? Topic, string Difficulty, string Status, int TimeLimitMins, int TotalQuestions, int PassMarkPercent, bool RandomizeQuestions, bool ShowResultImmediately, int MaxAttempts, string? Tags, int OrganizationId, int? CourseId, DateTime CreatedAt, int AttemptCount, List<MockTestQuestionDto>? Questions);
 public record CreateMockTestRequest(string Title, string? Description, string? Topic, string Difficulty, int TimeLimitMins, int TotalQuestions, int PassMarkPercent, bool RandomizeQuestions, bool ShowResultImmediately, int MaxAttempts, string? Tags, int OrganizationId, int? CourseId, int CreatedById);
-public record LinkCourseRequest(int? CourseId); // null = unlink
-public record SetTotalQuestionsRequest(int TotalQuestions);
-public record MarkCodingRequest(int QuestionId, int MarksAwarded);
 public record MockTestQuestionDto(int Id, string Text, string? ImageUrl, string? Explanation, string? ExplanationImageUrl, string? FormulaLatex, string Topic, string Difficulty, string QuestionType, int Marks, int NegativeMarks, int DisplayOrder, bool IsActive, List<MockTestOptionDto> Options);
 public record MockTestOptionDto(int Id, string Text, string? ImageUrl, bool IsCorrect, int DisplayOrder);
 public record AddMockQuestionRequest(string Text, string Topic, string Difficulty, string QuestionType, int Marks, int NegativeMarks, string? Explanation, string? ExplanationImageUrl, string? ImageUrl, string? FormulaLatex, int MockTestId, List<CreateMockOptionRequest> Options);
@@ -198,7 +196,8 @@ public record MockTestAnalysisDto(int StudentId, string StudentName, int TotalAt
 public record InterviewScheduleDto(int Id, string Title, string? Description, DateTime ScheduledAt, int DurationMinutes, string? Platform, string? MeetingLink, string? InterviewerName, string? InterviewerEmail, string Status, string? Notes, string? Feedback, int StudentId, string StudentName, int? CourseId, string? CourseTitle, bool EmailSent, DateTime CreatedAt);
 public record CreateInterviewRequest(string Title, string? Description, DateTime ScheduledAt, int DurationMinutes, string? Platform, string? MeetingLink, string? InterviewerName, string? InterviewerEmail, string? Notes, int StudentId, int? CourseId, int OrganizationId);
 public record UpdateInterviewRequest(string? Status, string? Notes, string? Feedback, DateTime? ScheduledAt, string? MeetingLink);
-// Coding/judge DTOs
+
+// ─── JUDGE / CODE EXECUTION ────────────────────────────────────────────────────
 public record RunCodeRequest(string Code, string Language, string? Input);
 public record SubmitCodeRequest(string Code, string Language);
 public record CreateCodingQuestionRequest(
@@ -207,10 +206,15 @@ public record CreateCodingQuestionRequest(
     string? Constraints,
     string? SampleInput,
     string? SampleOutput,
-    string? StarterCodeCpp,
-    string? StarterCodeJava,
-    string? StarterCodePython,
     string? StarterCodeJs,
+    string? StarterCodePython,
+    string? StarterCodeJava,
+    string? StarterCodeCpp,
     List<TestCaseRequest>? TestCases
 );
 public record TestCaseRequest(string Input, string ExpectedOutput, bool IsHidden, int Order);
+
+// ─── MOCK TESTS ────────────────────────────────────────────────────────────────
+public record SetTotalQuestionsRequest(int TotalQuestions);
+public record LinkCourseRequest(int? CourseId);  // null = unlink
+public record MarkCodingRequest(int QuestionId, int MarksAwarded);
