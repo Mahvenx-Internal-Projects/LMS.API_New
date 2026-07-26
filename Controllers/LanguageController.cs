@@ -7,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 namespace LMS.API.Controllers;
 
 [ApiController, Route("api/lang")]
-[Authorize]
 public class LanguageController(LmsDbContext db) : ControllerBase
 {
     // ── GET all languages for an org ─────────────────────────────
@@ -22,21 +21,8 @@ public class LanguageController(LmsDbContext db) : ControllerBase
         return Ok(langs);
     }
 
-    // ── GET all translations for a language ───────────────────────
-    [HttpGet("trans/{langId}")]
-    public async Task<IActionResult> GetTrans(int langId, [FromQuery] int orgId)
-    {
-        var trans = await db.LangTrans
-            .Where(t => t.LangID == langId && t.OrganizationId == orgId)
-            .Select(t => new { t.ATS, t.TransKey, t.TransVal })
-            .ToListAsync();
-        // Return as flat dictionary: { "firstName": "First Name", ... }
-        var dict = trans.ToDictionary(t => t.TransKey, t => t.TransVal);
-        return Ok(dict);
-    }
-
-    // ── GET translations for DEFAULT language ─────────────────────
-    [HttpGet("trans/org-default")]
+    // ── GET translations for DEFAULT language (must be before {langId}) ──
+    [HttpGet("trans/default")]
     public async Task<IActionResult> GetDefault([FromQuery] int orgId)
     {
         var def = await db.LangMasters
@@ -50,11 +36,21 @@ public class LanguageController(LmsDbContext db) : ControllerBase
         return Ok(trans.ToDictionary(t => t.TransKey, t => t.TransVal));
     }
 
+    // ── GET translations for specific language ────────────────────
+    [HttpGet("trans/{langId:int}")]
+    public async Task<IActionResult> GetTrans(int langId, [FromQuery] int orgId)
+    {
+        var trans = await db.LangTrans
+            .Where(t => t.LangID == langId && t.OrganizationId == orgId)
+            .Select(t => new { t.TransKey, t.TransVal })
+            .ToListAsync();
+        return Ok(trans.ToDictionary(t => t.TransKey, t => t.TransVal));
+    }
+
     // ── ADD language ──────────────────────────────────────────────
     [HttpPost("master"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
     public async Task<IActionResult> AddLang([FromBody] LangMasterRequest req)
     {
-        // If this is set as default, unset all others
         if (req.IsDefault)
             await db.LangMasters
                 .Where(l => l.OrganizationId == req.OrganizationId)
@@ -79,12 +75,10 @@ public class LanguageController(LmsDbContext db) : ControllerBase
     {
         var lang = await db.LangMasters.FindAsync(id);
         if (lang is null) return NotFound();
-
         if (req.IsDefault)
             await db.LangMasters
                 .Where(l => l.OrganizationId == lang.OrganizationId && l.LangID != id)
                 .ExecuteUpdateAsync(s => s.SetProperty(l => l.IsDefault, false));
-
         lang.LangName = req.LangName; lang.LangCode = req.LangCode;
         lang.IsActive = req.IsActive; lang.IsDefault = req.IsDefault;
         await db.SaveChangesAsync();
@@ -103,19 +97,15 @@ public class LanguageController(LmsDbContext db) : ControllerBase
         return Ok(new { message = "Deleted" });
     }
 
-    // ── UPSERT translation key/value ──────────────────────────────
+    // ── UPSERT single translation ─────────────────────────────────
     [HttpPost("trans"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
     public async Task<IActionResult> UpsertTrans([FromBody] LangTransRequest req)
     {
         var existing = await db.LangTrans.FirstOrDefaultAsync(t =>
             t.LangID == req.LangID && t.TransKey == req.TransKey && t.OrganizationId == req.OrganizationId);
-
         if (existing is not null)
-        {
             existing.TransVal = req.TransVal;
-        }
         else
-        {
             db.LangTrans.Add(new LangTrans
             {
                 LangID = req.LangID,
@@ -123,12 +113,11 @@ public class LanguageController(LmsDbContext db) : ControllerBase
                 TransVal = req.TransVal,
                 OrganizationId = req.OrganizationId
             });
-        }
         await db.SaveChangesAsync();
         return Ok(new { message = "Saved" });
     }
 
-    // ── BULK upsert (save whole translation table at once) ────────
+    // ── BULK upsert ───────────────────────────────────────────────
     [HttpPost("trans/bulk"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
     public async Task<IActionResult> BulkUpsert([FromBody] BulkTransRequest req)
     {
@@ -152,7 +141,7 @@ public class LanguageController(LmsDbContext db) : ControllerBase
     }
 
     // ── DELETE translation ────────────────────────────────────────
-    [HttpDelete("trans/{ats}"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
+    [HttpDelete("trans/{ats:int}"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
     public async Task<IActionResult> DeleteTrans(int ats)
     {
         var t = await db.LangTrans.FindAsync(ats);
