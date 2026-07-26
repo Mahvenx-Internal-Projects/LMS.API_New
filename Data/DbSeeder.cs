@@ -1058,26 +1058,40 @@ public static class DbSeeder
 
             foreach (var seedOrg in seedOrgs)
             {
-                var lang = new LangMaster
+                // LangMaster is now global (no OrganizationId/IsDefault)
+                // Ensure English (LangID=1) exists globally
+                if (!db.LangMasters.Any(l => l.LangCode == "en"))
                 {
-                    LangName = "English",
-                    LangCode = "en",
-                    IsActive = true,
-                    IsDefault = true,
-                    OrganizationId = seedOrg.Id
-                };
-                db.LangMasters.Add(lang);
-                db.SaveChanges(); // save now to get LangID
+                    db.LangMasters.Add(new LangMaster { LangName = "English", LangCode = "en", IsActive = true });
+                    db.SaveChanges();
+                }
+                var englishLang = db.LangMasters.First(l => l.LangCode == "en");
 
+                // Set English as default for this org
+                if (!db.OrgLangSettings.Any(s => s.OrganizationId == seedOrg.Id))
+                {
+                    db.OrgLangSettings.Add(new OrgLangSetting
+                    {
+                        OrganizationId = seedOrg.Id,
+                        LangID = englishLang.LangID,
+                        IsDefault = true
+                    });
+                    db.SaveChanges();
+                }
+
+                // Seed translations for this org
                 foreach (var kv in translations)
                 {
-                    db.LangTrans.Add(new LangTrans
+                    if (!db.LangTrans.Any(t => t.LangID == englishLang.LangID && t.OrganizationId == seedOrg.Id && t.TransKey == kv.Key))
                     {
-                        LangID = lang.LangID,
-                        TransKey = kv.Key,
-                        TransVal = kv.Value,
-                        OrganizationId = seedOrg.Id
-                    });
+                        db.LangTrans.Add(new LangTrans
+                        {
+                            LangID = englishLang.LangID,
+                            TransKey = kv.Key,
+                            TransVal = kv.Value,
+                            OrganizationId = seedOrg.Id
+                        });
+                    }
                 }
                 db.SaveChanges();
                 Console.WriteLine($"Seeded {translations.Count} English translations for: {seedOrg.Name}");

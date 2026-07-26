@@ -1010,6 +1010,9 @@ public class PayrollRecord
 }
 
 // ─── LANGUAGE MASTER ──────────────────────────────────────────
+// ── LangMaster — GLOBAL languages (not per org) ──────────────
+// LangID=1 → English, LangID=2 → Telugu, LangID=3 → Hindi
+// Same LangID used across ALL organizations
 public class LangMaster
 {
     [Key]
@@ -1017,25 +1020,33 @@ public class LangMaster
     public string LangName { get; set; } = "";   // e.g. "English", "Telugu", "Hindi"
     public string LangCode { get; set; } = "en"; // ISO code e.g. en, te, hi
     public bool IsActive { get; set; } = true;
-    public bool IsDefault { get; set; } = false;
-    public int OrganizationId { get; set; }
-    public Organization Organization { get; set; } = null!;
     public ICollection<LangTrans> Translations { get; set; } = [];
 }
 
-// ─── LANGUAGE TRANSLATIONS ────────────────────────────────────
-// One row per key per language.
-// Key examples: "firstName","lastName","mobile","department",
-//               "menu.dashboard","menu.students","menu.courses"
-//               "label.search","label.save","label.cancel"
+// ── OrgLangSetting — which language is default per org ────────
+// Each org picks their default language from LangMaster
+public class OrgLangSetting
+{
+    [Key]
+    public int Id { get; set; }
+    public int OrganizationId { get; set; }
+    public Organization Organization { get; set; } = null!;
+    public int LangID { get; set; }   // FK to LangMaster
+    public bool IsDefault { get; set; } = true;
+}
+
+// ── LangTrans — translations per language per org ─────────────
+// LangID=1 (English), OrgId=1 → TransKey=firstName, TransVal="First Name"
+// LangID=1 (English), OrgId=2 → TransKey=firstName, TransVal="First Name1" (customized)
+// LangID=2 (Telugu),  OrgId=1 → TransKey=firstName, TransVal="మొదటి పేరు"
 public class LangTrans
 {
     [Key]
-    public int ATS { get; set; }     // auto PK
-    public int LangID { get; set; }
+    public int ATS { get; set; }   // auto PK
+    public int LangID { get; set; }   // FK to LangMaster (1=en,2=te,3=hi)
     public LangMaster Lang { get; set; } = null!;
-    public string TransKey { get; set; } = ""; // e.g. "firstName"
-    public string TransVal { get; set; } = ""; // e.g. "మొదటి పేరు" (Telugu)
-    public int OrganizationId { get; set; }
+    public int OrganizationId { get; set; }   // org-specific label value
     public Organization Organization { get; set; } = null!;
+    public string TransKey { get; set; } = "";
+    public string TransVal { get; set; } = "";
 }

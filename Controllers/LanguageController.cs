@@ -9,36 +9,45 @@ namespace LMS.API.Controllers;
 [ApiController, Route("api/lang")]
 public class LanguageController(LmsDbContext db) : ControllerBase
 {
-    // ── GET all languages for an org ─────────────────────────────
+    // ── GET all global languages ──────────────────────────────────
+    // Returns LangID=1 English, LangID=2 Telugu, LangID=3 Hindi etc.
     [HttpGet("master")]
-    public async Task<IActionResult> GetMaster([FromQuery] int orgId)
+    public async Task<IActionResult> GetMaster()
     {
         var langs = await db.LangMasters
-            .Where(l => l.OrganizationId == orgId)
+            .Where(l => l.IsActive)
             .OrderBy(l => l.LangID)
-            .Select(l => new { l.LangID, l.LangName, l.LangCode, l.IsActive, l.IsDefault })
+            .Select(l => new { l.LangID, l.LangName, l.LangCode, l.IsActive })
             .ToListAsync();
         return Ok(langs);
     }
 
-    // ── GET translations for DEFAULT language (must be before {langId}) ──
-    [HttpGet("trans/default")]
-    public async Task<IActionResult> GetDefault([FromQuery] int orgId)
+    // ── GET org's language settings ───────────────────────────────
+    [HttpGet("org-settings/{orgId}")]
+    public async Task<IActionResult> GetOrgSettings(int orgId)
     {
-        var def = await db.LangMasters
-            .FirstOrDefaultAsync(l => l.OrganizationId == orgId && l.IsDefault && l.IsActive);
-        if (def is null) return Ok(new Dictionary<string, string>());
-
-        var trans = await db.LangTrans
-            .Where(t => t.LangID == def.LangID && t.OrganizationId == orgId)
-            .Select(t => new { t.TransKey, t.TransVal })
+        var settings = await db.OrgLangSettings
+            .Where(s => s.OrganizationId == orgId)
+            .Include(s => s.Organization)
+            .Select(s => new { s.Id, s.LangID, s.IsDefault })
             .ToListAsync();
-        return Ok(trans.ToDictionary(t => t.TransKey, t => t.TransVal));
+        return Ok(settings);
     }
 
-    // ── GET translations for specific language ────────────────────
-    [HttpGet("trans/{langId:int}")]
-    public async Task<IActionResult> GetTrans(int langId, [FromQuery] int orgId)
+    // ── GET default langId for an org ─────────────────────────────
+    [HttpGet("org-default-lang/{orgId}")]
+    public async Task<IActionResult> GetDefaultLang(int orgId)
+    {
+        var setting = await db.OrgLangSettings
+            .FirstOrDefaultAsync(s => s.OrganizationId == orgId && s.IsDefault);
+        // Fallback to LangID=1 (English) if not set
+        return Ok(new { langId = setting?.LangID ?? 1 });
+    }
+
+    // ── GET translations: LangID + OrgId ─────────────────────────
+    // e.g. GET /api/lang/trans/1/2 → English labels for Org 2
+    [HttpGet("trans/{langId:int}/{orgId:int}")]
+    public async Task<IActionResult> GetTrans(int langId, int orgId)
     {
         var trans = await db.LangTrans
             .Where(t => t.LangID == langId && t.OrganizationId == orgId)
@@ -47,77 +56,70 @@ public class LanguageController(LmsDbContext db) : ControllerBase
         return Ok(trans.ToDictionary(t => t.TransKey, t => t.TransVal));
     }
 
-    // ── ADD language ──────────────────────────────────────────────
-    [HttpPost("master"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
+    // ── GET default language translations for an org ──────────────
+    // Finds org's default LangID, then fetches translations
+    [HttpGet("trans/default/{orgId:int}")]
+    public async Task<IActionResult> GetDefault(int orgId)
+    {
+        // Get org's default language (fallback to LangID=1 = English)
+        var setting = await db.OrgLangSettings
+            .FirstOrDefaultAsync(s => s.OrganizationId == orgId && s.IsDefault);
+        var langId = setting?.LangID ?? 1;
+
+        var trans = await db.LangTrans
+            .Where(t => t.LangID == langId && t.OrganizationId == orgId)
+            .Select(t => new { t.TransKey, t.TransVal })
+            .ToListAsync();
+
+        // If org has no custom translations, fallback to org 1's translations
+        if (!trans.Any())
+        {
+            trans = await db.LangTrans
+                .Where(t => t.LangID == langId && t.OrganizationId == 1)
+                .Select(t => new { t.TransKey, t.TransVal })
+                .ToListAsync();
+        }
+
+        return Ok(trans.ToDictionary(t => t.TransKey, t => t.TransVal));
+    }
+
+    // ── ADD global language ───────────────────────────────────────
+    [HttpPost("master"), Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> AddLang([FromBody] LangMasterRequest req)
     {
-        if (req.IsDefault)
-            await db.LangMasters
-                .Where(l => l.OrganizationId == req.OrganizationId)
-                .ExecuteUpdateAsync(s => s.SetProperty(l => l.IsDefault, false));
+        if (await db.LangMasters.AnyAsync(l => l.LangCode == req.LangCode))
+            return BadRequest(new { message = $"Language '{req.LangCode}' already exists" });
 
         var lang = new LangMaster
         {
             LangName = req.LangName,
             LangCode = req.LangCode,
-            IsActive = req.IsActive,
-            IsDefault = req.IsDefault,
-            OrganizationId = req.OrganizationId
+            IsActive = true
         };
         db.LangMasters.Add(lang);
         await db.SaveChangesAsync();
         return Ok(new { message = "Language added", langId = lang.LangID });
     }
 
-    // ── UPDATE language ───────────────────────────────────────────
-    [HttpPut("master/{id}"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
-    public async Task<IActionResult> UpdateLang(int id, [FromBody] LangMasterRequest req)
+    // ── SET org default language ──────────────────────────────────
+    [HttpPost("org-settings"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
+    public async Task<IActionResult> SetOrgLang([FromBody] OrgLangRequest req)
     {
-        var lang = await db.LangMasters.FindAsync(id);
-        if (lang is null) return NotFound();
-        if (req.IsDefault)
-            await db.LangMasters
-                .Where(l => l.OrganizationId == lang.OrganizationId && l.LangID != id)
-                .ExecuteUpdateAsync(s => s.SetProperty(l => l.IsDefault, false));
-        lang.LangName = req.LangName; lang.LangCode = req.LangCode;
-        lang.IsActive = req.IsActive; lang.IsDefault = req.IsDefault;
+        // Remove existing settings for this org
+        var existing = db.OrgLangSettings.Where(s => s.OrganizationId == req.OrganizationId);
+        db.OrgLangSettings.RemoveRange(existing);
+
+        db.OrgLangSettings.Add(new OrgLangSetting
+        {
+            OrganizationId = req.OrganizationId,
+            LangID = req.LangID,
+            IsDefault = true
+        });
         await db.SaveChangesAsync();
-        return Ok(new { message = "Updated" });
+        return Ok(new { message = "Org language updated" });
     }
 
-    // ── DELETE language ───────────────────────────────────────────
-    [HttpDelete("master/{id}"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
-    public async Task<IActionResult> DeleteLang(int id)
-    {
-        var lang = await db.LangMasters.FindAsync(id);
-        if (lang is null) return NotFound();
-        if (lang.IsDefault) return BadRequest(new { message = "Cannot delete default language" });
-        db.LangMasters.Remove(lang);
-        await db.SaveChangesAsync();
-        return Ok(new { message = "Deleted" });
-    }
-
-    // ── UPSERT single translation ─────────────────────────────────
-    [HttpPost("trans"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
-    public async Task<IActionResult> UpsertTrans([FromBody] LangTransRequest req)
-    {
-        var existing = await db.LangTrans.FirstOrDefaultAsync(t =>
-            t.LangID == req.LangID && t.TransKey == req.TransKey && t.OrganizationId == req.OrganizationId);
-        if (existing is not null)
-            existing.TransVal = req.TransVal;
-        else
-            db.LangTrans.Add(new LangTrans
-            {
-                LangID = req.LangID,
-                TransKey = req.TransKey,
-                TransVal = req.TransVal,
-                OrganizationId = req.OrganizationId
-            });
-        await db.SaveChangesAsync();
-        return Ok(new { message = "Saved" });
-    }
-
-    // ── BULK upsert ───────────────────────────────────────────────
+    // ── BULK upsert translations ──────────────────────────────────
     [HttpPost("trans/bulk"), Authorize(Roles = "SuperAdmin,OrgAdmin")]
     public async Task<IActionResult> BulkUpsert([FromBody] BulkTransRequest req)
     {
@@ -152,13 +154,6 @@ public class LanguageController(LmsDbContext db) : ControllerBase
     }
 }
 
-public record LangMasterRequest(
-    string LangName, string LangCode,
-    bool IsActive, bool IsDefault, int OrganizationId
-);
-public record LangTransRequest(
-    int LangID, string TransKey, string TransVal, int OrganizationId
-);
-public record BulkTransRequest(
-    int LangID, int OrganizationId, Dictionary<string, string> Translations
-);
+public record LangMasterRequest(string LangName, string LangCode);
+public record OrgLangRequest(int OrganizationId, int LangID);
+public record BulkTransRequest(int LangID, int OrganizationId, Dictionary<string, string> Translations);
