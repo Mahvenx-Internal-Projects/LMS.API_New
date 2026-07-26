@@ -6,6 +6,8 @@ public class LmsDbContext(DbContextOptions<LmsDbContext> options) : DbContext(op
 {
     // Core
     public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<LangMaster> LangMasters => Set<LangMaster>();
+    public DbSet<LangTrans> LangTrans => Set<LangTrans>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserRoleAssignment> UserRoleAssignments => Set<UserRoleAssignment>();
 

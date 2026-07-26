@@ -1008,3 +1008,34 @@ public class PayrollRecord
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
+
+// ─── LANGUAGE MASTER ──────────────────────────────────────────
+public class LangMaster
+{
+    [Key]
+    public int LangID { get; set; }
+    public string LangName { get; set; } = "";   // e.g. "English", "Telugu", "Hindi"
+    public string LangCode { get; set; } = "en"; // ISO code e.g. en, te, hi
+    public bool IsActive { get; set; } = true;
+    public bool IsDefault { get; set; } = false;
+    public int OrganizationId { get; set; }
+    public Organization Organization { get; set; } = null!;
+    public ICollection<LangTrans> Translations { get; set; } = [];
+}
+
+// ─── LANGUAGE TRANSLATIONS ────────────────────────────────────
+// One row per key per language.
+// Key examples: "firstName","lastName","mobile","department",
+//               "menu.dashboard","menu.students","menu.courses"
+//               "label.search","label.save","label.cancel"
+public class LangTrans
+{
+    [Key]
+    public int ATS { get; set; }     // auto PK
+    public int LangID { get; set; }
+    public LangMaster Lang { get; set; } = null!;
+    public string TransKey { get; set; } = ""; // e.g. "firstName"
+    public string TransVal { get; set; } = ""; // e.g. "మొదటి పేరు" (Telugu)
+    public int OrganizationId { get; set; }
+    public Organization Organization { get; set; } = null!;
+}

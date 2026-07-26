@@ -924,6 +924,166 @@ public static class DbSeeder
             db.SaveChanges();
             Console.WriteLine("Seeded About Us / Contact Us content + templates for " + orgToUpdate.Name);
         }
+
+        // ════════════════════════════════════════════════════════════════
+        // SEED — Language Master + English Translations (all orgs)
+        // ════════════════════════════════════════════════════════════════
+        if (!db.LangMasters.Any())
+        {
+            var seedOrgs = db.Organizations.ToList();
+            var translations = new Dictionary<string, string>
+            {
+                ["firstName"] = "First Name",
+                ["lastName"] = "Last Name",
+                ["email"] = "Email Address",
+                ["mobile"] = "Mobile Number",
+                ["password"] = "Password",
+                ["department"] = "Department",
+                ["location"] = "Location",
+                ["learningId"] = "Learning ID",
+                ["hireDate"] = "Hire Date",
+                ["address1"] = "Address Line 1",
+                ["address2"] = "Address Line 2",
+                ["city"] = "City",
+                ["state"] = "State",
+                ["country"] = "Country",
+                ["pin"] = "PIN Code",
+                ["addlId"] = "Additional ID",
+                ["comments"] = "Comments",
+                ["role"] = "Role",
+                ["status"] = "Status",
+                ["phone"] = "Phone",
+                ["placeholder.firstName"] = "John",
+                ["placeholder.lastName"] = "Doe",
+                ["placeholder.email"] = "you@example.com",
+                ["placeholder.mobile"] = "+91 98765 43210",
+                ["placeholder.password"] = "Min. 8 characters",
+                ["placeholder.search"] = "Search...",
+                ["placeholder.city"] = "City",
+                ["placeholder.state"] = "State",
+                ["validation.required"] = "This field is required",
+                ["validation.firstName.required"] = "First name is required",
+                ["validation.lastName.required"] = "Last name is required",
+                ["validation.email.required"] = "Email address is required",
+                ["validation.email.invalid"] = "Enter a valid email address",
+                ["validation.mobile.required"] = "Mobile number is required",
+                ["validation.mobile.invalid"] = "Enter a valid mobile number",
+                ["validation.password.required"] = "Password is required",
+                ["validation.password.minLength"] = "Password must be at least 8 characters",
+                ["validation.password.mismatch"] = "Passwords do not match",
+                ["validation.org.missing"] = "Organization not detected",
+                ["msg.registerSuccess"] = "Welcome! Your account has been created.",
+                ["msg.registerFailed"] = "Registration failed. Please try again.",
+                ["msg.loginSuccess"] = "Welcome back!",
+                ["msg.loginFailed"] = "Invalid email or password",
+                ["msg.saved"] = "Saved successfully!",
+                ["msg.deleted"] = "Deleted successfully.",
+                ["msg.error"] = "Something went wrong. Please try again.",
+                ["msg.noData"] = "No data found.",
+                ["msg.loading"] = "Loading...",
+                ["msg.registeringUnder"] = "Registering under",
+                ["msg.welcomeBack"] = "Welcome back",
+                ["msg.noNotifications"] = "No notifications yet",
+                ["page.register.title"] = "Create account",
+                ["page.register.subtitle"] = "Joining",
+                ["page.register.submit"] = "Create My Account",
+                ["page.register.haveAccount"] = "Already have an account?",
+                ["page.register.signin"] = "Sign in",
+                ["page.register.backTo"] = "Back to",
+                ["page.login.title"] = "Welcome back",
+                ["page.login.subtitle"] = "Sign in to your account",
+                ["page.login.submit"] = "Sign In",
+                ["page.login.noAccount"] = "Don't have an account?",
+                ["page.login.register"] = "Register",
+                ["page.login.forgotPassword"] = "Forgot password?",
+                ["menu.dashboard"] = "Dashboard",
+                ["menu.students"] = "Students",
+                ["menu.courses"] = "Courses",
+                ["menu.exams"] = "Mock Tests",
+                ["menu.liveclass"] = "Live Classes",
+                ["menu.payroll"] = "Payroll",
+                ["menu.bench"] = "Bench Resources",
+                ["menu.settings"] = "Org Settings",
+                ["menu.reports"] = "Reports",
+                ["menu.language"] = "Language",
+                ["menu.logout"] = "Sign Out",
+                ["menu.profile"] = "Profile",
+                ["menu.organizations"] = "Organizations",
+                ["menu.categories"] = "Categories",
+                ["menu.departments"] = "Departments",
+                ["menu.assignments"] = "Assignments",
+                ["menu.batches"] = "Training Batches",
+                ["menu.analytics"] = "Analytics",
+                ["menu.payments"] = "Payments",
+                ["menu.homepage"] = "Homepage",
+                ["menu.myCourses"] = "My Courses",
+                ["menu.catalog"] = "Course Catalog",
+                ["menu.certificates"] = "Certificates",
+                ["menu.orders"] = "Orders",
+                ["menu.interviews"] = "Interview Schedule",
+                ["menu.attendance"] = "Attendance",
+                ["label.save"] = "Save",
+                ["label.cancel"] = "Cancel",
+                ["label.add"] = "Add",
+                ["label.edit"] = "Edit",
+                ["label.delete"] = "Delete",
+                ["label.search"] = "Search",
+                ["label.filter"] = "Filter",
+                ["label.export"] = "Export",
+                ["label.import"] = "Import",
+                ["label.submit"] = "Submit",
+                ["label.confirm"] = "Confirm",
+                ["label.back"] = "Back",
+                ["label.next"] = "Next",
+                ["label.view"] = "View",
+                ["label.download"] = "Download",
+                ["label.upload"] = "Upload",
+                ["label.actions"] = "Actions",
+                ["label.active"] = "Active",
+                ["label.inactive"] = "Inactive",
+                ["label.yes"] = "Yes",
+                ["label.no"] = "No",
+                ["label.all"] = "All",
+                ["label.select"] = "Select",
+                ["label.total"] = "Total",
+                ["label.notifications"] = "Notifications",
+                ["label.markAllRead"] = "Mark all read",
+                ["label.switchView"] = "Switch View",
+                ["label.visitPortal"] = "Visit Portal",
+                ["label.collapse"] = "Collapse",
+                ["label.instructorPanel"] = "Instructor Panel",
+                ["label.viewingAs"] = "Viewing as",
+                ["label.actualRole"] = "actual role",
+            };
+
+            foreach (var seedOrg in seedOrgs)
+            {
+                var lang = new LangMaster
+                {
+                    LangName = "English",
+                    LangCode = "en",
+                    IsActive = true,
+                    IsDefault = true,
+                    OrganizationId = seedOrg.Id
+                };
+                db.LangMasters.Add(lang);
+                db.SaveChanges(); // save now to get LangID
+
+                foreach (var kv in translations)
+                {
+                    db.LangTrans.Add(new LangTrans
+                    {
+                        LangID = lang.LangID,
+                        TransKey = kv.Key,
+                        TransVal = kv.Value,
+                        OrganizationId = seedOrg.Id
+                    });
+                }
+                db.SaveChanges();
+                Console.WriteLine($"Seeded {translations.Count} English translations for: {seedOrg.Name}");
+            }
+        }
+
     }
 
 }

@@ -221,7 +221,7 @@ public class PayrollController(LmsDbContext db) : ControllerBase
         var all = await q.ToListAsync();
         return Ok(new
         {
-            total = all.Count,
+            total = all.Count(),
             active = all.Count(r => r.Status == PayrollStatus.Active),
             inactive = all.Count(r => r.Status == PayrollStatus.Inactive),
             onHold = all.Count(r => r.Status == PayrollStatus.OnHold),

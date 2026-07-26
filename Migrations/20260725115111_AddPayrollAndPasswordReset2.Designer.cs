@@ -4,6 +4,7 @@ using LMS.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LMS.API.Migrations
 {
     [DbContext(typeof(LmsDbContext))]
-    partial class LmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260725115111_AddPayrollAndPasswordReset2")]
+    partial class AddPayrollAndPasswordReset2
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1069,69 +1072,6 @@ namespace LMS.API.Migrations
                     b.HasIndex("StudentId");
 
                     b.ToTable("InterviewSchedules");
-                });
-
-            modelBuilder.Entity("LangMaster", b =>
-                {
-                    b.Property<int>("LangID")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("LangID"));
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("IsDefault")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("LangCode")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("LangName")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("int");
-
-                    b.HasKey("LangID");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.ToTable("LangMasters");
-                });
-
-            modelBuilder.Entity("LangTrans", b =>
-                {
-                    b.Property<int>("ATS")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("ATS"));
-
-                    b.Property<int>("LangID")
-                        .HasColumnType("int");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("TransKey")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("TransVal")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.HasKey("ATS");
-
-                    b.HasIndex("LangID");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.ToTable("LangTrans");
                 });
 
             modelBuilder.Entity("Lesson", b =>
@@ -2792,36 +2732,6 @@ namespace LMS.API.Migrations
                     b.Navigation("Student");
                 });
 
-            modelBuilder.Entity("LangMaster", b =>
-                {
-                    b.HasOne("Organization", "Organization")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Organization");
-                });
-
-            modelBuilder.Entity("LangTrans", b =>
-                {
-                    b.HasOne("LangMaster", "Lang")
-                        .WithMany("Translations")
-                        .HasForeignKey("LangID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Organization", "Organization")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Lang");
-
-                    b.Navigation("Organization");
-                });
-
             modelBuilder.Entity("Lesson", b =>
                 {
                     b.HasOne("Module", "Module")
@@ -3228,11 +3138,6 @@ namespace LMS.API.Migrations
             modelBuilder.Entity("ExamQuestion", b =>
                 {
                     b.Navigation("Options");
-                });
-
-            modelBuilder.Entity("LangMaster", b =>
-                {
-                    b.Navigation("Translations");
                 });
 
             modelBuilder.Entity("Lesson", b =>
