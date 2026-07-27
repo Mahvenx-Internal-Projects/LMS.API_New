@@ -12,13 +12,25 @@ public class LanguageController(LmsDbContext db) : ControllerBase
     // ── GET all global languages ──────────────────────────────────
     // Returns LangID=1 English, LangID=2 Telugu, LangID=3 Hindi etc.
     [HttpGet("master")]
-    public async Task<IActionResult> GetMaster()
+    
+    public async Task<IActionResult> GetMaster(int orgId)
     {
         var langs = await db.LangMasters
-            .Where(l => l.IsActive)
+            .Where(l => l.IsActive &&
+                        l.Translations.Any(t => t.OrganizationId == orgId))
+            .Select(l => new
+            {
+                l.LangID,
+                l.LangName,
+                l.LangCode,
+                OrganizationId = l.Translations
+                    .Where(t => t.OrganizationId == orgId)
+                    .Select(t => t.OrganizationId)
+                    .FirstOrDefault()
+            })
             .OrderBy(l => l.LangID)
-            .Select(l => new { l.LangID, l.LangName, l.LangCode, l.IsActive })
             .ToListAsync();
+
         return Ok(langs);
     }
 
