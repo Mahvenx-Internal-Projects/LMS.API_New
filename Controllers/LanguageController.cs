@@ -165,7 +165,6 @@ public class LanguageController(LmsDbContext db) : ControllerBase
         return Ok(new { message = "Deleted" });
     }
 }
-
 public record LangMasterRequest(string LangName, string LangCode);
 public record OrgLangRequest(int OrganizationId, int LangID);
 public record BulkTransRequest(int LangID, int OrganizationId, Dictionary<string, string> Translations);
