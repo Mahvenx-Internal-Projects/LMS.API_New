@@ -12,25 +12,13 @@ public class LanguageController(LmsDbContext db) : ControllerBase
     // ── GET all global languages ──────────────────────────────────
     // Returns LangID=1 English, LangID=2 Telugu, LangID=3 Hindi etc.
     [HttpGet("master")]
-    
-    public async Task<IActionResult> GetMaster(int orgId)
+    public async Task<IActionResult> GetMaster()
     {
         var langs = await db.LangMasters
-            .Where(l => l.IsActive &&
-                        l.Translations.Any(t => t.OrganizationId == orgId))
-            .Select(l => new
-            {
-                l.LangID,
-                l.LangName,
-                l.LangCode,
-                OrganizationId = l.Translations
-                    .Where(t => t.OrganizationId == orgId)
-                    .Select(t => t.OrganizationId)
-                    .FirstOrDefault()
-            })
+            .Where(l => l.IsActive)
             .OrderBy(l => l.LangID)
+            .Select(l => new { l.LangID, l.LangName, l.LangCode, l.IsActive })
             .ToListAsync();
-
         return Ok(langs);
     }
 
@@ -165,6 +153,7 @@ public class LanguageController(LmsDbContext db) : ControllerBase
         return Ok(new { message = "Deleted" });
     }
 }
+
 public record LangMasterRequest(string LangName, string LangCode);
 public record OrgLangRequest(int OrganizationId, int LangID);
 public record BulkTransRequest(int LangID, int OrganizationId, Dictionary<string, string> Translations);

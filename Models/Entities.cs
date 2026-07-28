@@ -942,6 +942,27 @@ public class BenchResource
     public decimal? CurrentCTC { get; set; } // Current CTC in LPA
     public decimal? ExpectedCTC { get; set; } // Expected CTC in LPA
     public string? Notes { get; set; }
+    // ── Profile photo ─────────────────────────────────────────
+    // R2 path: {orgId}/bench/photos/{guid}.jpg
+    public string? ProfilePhotoUrl { get; set; }
+    public string? ProfilePhotoKey { get; set; }
+    // ── Resume / CV ───────────────────────────────────────────
+    // R2 path: {orgId}/bench/cvs/{guid}.pdf
+    public string? ResumeUrl { get; set; }
+    public string? ResumeKey { get; set; }
+    public string? ResumeFileName { get; set; }
+    // ── PAN Card ──────────────────────────────────────────────
+    // R2 path: {orgId}/bench/docs/{guid}.jpg|pdf
+    public string? PanCardUrl { get; set; }
+    public string? PanCardKey { get; set; }
+    public string? PanCardNumber { get; set; }   // PAN number text
+    // ── Aadhaar Card ──────────────────────────────────────────
+    public string? AadhaarUrl { get; set; }
+    public string? AadhaarKey { get; set; }
+    public string? AadhaarNumber { get; set; }   // Aadhaar number text
+    // ── Other Documents ───────────────────────────────────────
+    // JSON array: [{name, url, key, uploadedAt}]
+    public string? OtherDocumentsJson { get; set; }
     public int OrganizationId { get; set; }
     public Organization Organization { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
