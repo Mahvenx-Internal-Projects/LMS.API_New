@@ -16,7 +16,7 @@ public class CoursesController(LmsDbContext db) : ControllerBase
     [HttpGet]
     [AllowAnonymous]
     public async Task<IActionResult> GetAll(
-        [FromQuery] int? orgId, [FromQuery] int? categoryId, [FromQuery] int? instructorId,
+        [FromQuery] int? orgId, [FromQuery] int? categoryId,
         [FromQuery] string? level, [FromQuery] string? status,
         [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int size = 20)
     {
@@ -30,7 +30,6 @@ public class CoursesController(LmsDbContext db) : ControllerBase
 
         if (orgId.HasValue) q = q.Where(c => c.OrganizationId == orgId.Value);
         if (categoryId.HasValue) q = q.Where(c => c.CategoryId == categoryId.Value);
-        if (instructorId.HasValue) q = q.Where(c => c.InstructorId == instructorId.Value);
         if (!string.IsNullOrEmpty(level) && Enum.TryParse<CourseLevel>(level, out var lv))
             q = q.Where(c => c.Level == lv);
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<CourseStatus>(status, out var st))
@@ -64,38 +63,23 @@ public class CoursesController(LmsDbContext db) : ControllerBase
     [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
     public async Task<IActionResult> Create([FromBody] CreateCourseRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.Title))
-            return BadRequest(new { message = "Title is required" });
-        if (!Enum.TryParse<CourseLevel>(req.Level, true, out var level))
-            return BadRequest(new { message = $"Invalid level: {req.Level}" });
-
-        try
+        var course = new Course
         {
-            var course = new Course
-            {
-                Title = req.Title,
-                Description = req.Description,
-                ThumbnailUrl = req.ThumbnailUrl,
-                Level = level,
-                Price = req.Price,
-                IsFree = req.IsFree,
-                CategoryId = req.CategoryId is > 0 ? req.CategoryId : null,
-                InstructorId = req.InstructorId is > 0 ? req.InstructorId : null,
-                OrganizationId = req.OrganizationId,
-                Tags = req.Tags,
-                Language = req.Language,
-                EnforceSequentialLessons = req.EnforceSequentialLessons,
-                Status = req.Status != null && Enum.TryParse<CourseStatus>(req.Status, out var createStatus)
-                    ? createStatus : CourseStatus.Draft,
-            };
-            db.Courses.Add(course);
-            await db.SaveChangesAsync();
-            return CreatedAtAction(nameof(Get), new { id = course.Id }, new { course.Id });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = $"Failed to create course: {ex.Message}" });
-        }
+            Title = req.Title,
+            Description = req.Description,
+            ThumbnailUrl = req.ThumbnailUrl,
+            Level = Enum.Parse<CourseLevel>(req.Level),
+            Price = req.Price,
+            IsFree = req.IsFree,
+            CategoryId = req.CategoryId,
+            InstructorId = req.InstructorId,
+            OrganizationId = req.OrganizationId,
+            Tags = req.Tags,
+            Language = req.Language
+        };
+        db.Courses.Add(course);
+        await db.SaveChangesAsync();
+        return CreatedAtAction(nameof(Get), new { id = course.Id }, new { course.Id });
     }
 
     [HttpPut("{id}")]
@@ -105,33 +89,19 @@ public class CoursesController(LmsDbContext db) : ControllerBase
         var course = await db.Courses.FindAsync(id);
         if (course is null) return NotFound();
 
-        try
-        {
-            if (req.Title is not null) course.Title = req.Title;
-            if (req.Description is not null) course.Description = req.Description;
-            if (req.ThumbnailUrl is not null) course.ThumbnailUrl = req.ThumbnailUrl;
-            if (req.Level is not null) course.Level = Enum.Parse<CourseLevel>(req.Level);
-            if (req.Status is not null) course.Status = Enum.Parse<CourseStatus>(req.Status);
-            if (req.Price is not null) course.Price = req.Price.Value;
-            if (req.IsFree is not null) course.IsFree = req.IsFree.Value;
-            if (req.CategoryId is not null) course.CategoryId = req.CategoryId.Value;
-            // Allow clearing the instructor by sending 0/null explicitly,
-            // same convention used in Create's "req.InstructorId is > 0"
-            // check — distinguishes "field omitted, leave unchanged" from
-            // "field sent as 0, clear the assignment".
-            if (req.InstructorId is not null)
-                course.InstructorId = req.InstructorId > 0 ? req.InstructorId : null;
-            if (req.Tags is not null) course.Tags = req.Tags;
-            if (req.EnforceSequentialLessons is not null) course.EnforceSequentialLessons = req.EnforceSequentialLessons.Value;
-            course.UpdatedAt = DateTime.UtcNow;
+        if (req.Title is not null) course.Title = req.Title;
+        if (req.Description is not null) course.Description = req.Description;
+        if (req.ThumbnailUrl is not null) course.ThumbnailUrl = req.ThumbnailUrl;
+        if (req.Level is not null) course.Level = Enum.Parse<CourseLevel>(req.Level);
+        if (req.Status is not null) course.Status = Enum.Parse<CourseStatus>(req.Status);
+        if (req.Price is not null) course.Price = req.Price.Value;
+        if (req.IsFree is not null) course.IsFree = req.IsFree.Value;
+        if (req.CategoryId is not null) course.CategoryId = req.CategoryId.Value;
+        if (req.Tags is not null) course.Tags = req.Tags;
+        course.UpdatedAt = DateTime.UtcNow;
 
-            await db.SaveChangesAsync();
-            return NoContent();
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = $"Failed to update course: {ex.Message}" });
-        }
+        await db.SaveChangesAsync();
+        return NoContent();
     }
 
     [HttpDelete("{id}")]
@@ -174,8 +144,7 @@ public class CoursesController(LmsDbContext db) : ControllerBase
                 l.FileUrl,
                 l.Content
             }).ToList()
-        )).ToList() : null,
-        c.EnforceSequentialLessons
+        )).ToList() : null
     );
 }
 
@@ -257,73 +226,34 @@ public class ModulesController(LmsDbContext db) : ControllerBase
     [HttpGet("course/{courseId}")]
     public async Task<IActionResult> GetByCourse(int courseId)
     {
-        try
-        {
-            var modules = await db.Modules
-                .Include(m => m.Lessons)
-                .Where(m => m.CourseId == courseId)
-                .OrderBy(m => m.DisplayOrder)
-                .ToListAsync();
-
-            object MapLessonWithChildren(Lesson l, string moduleTitle, List<Lesson> allModuleLessons)
+        var modules = await db.Modules
+            .Include(m => m.Lessons.OrderBy(l => l.DisplayOrder))
+            .Include(m => m.Lessons).ThenInclude(l => l.Exam)
+            .Where(m => m.CourseId == courseId)
+            .OrderBy(m => m.DisplayOrder)
+            .ToListAsync();
+        return Ok(modules.Select(m => new ModuleDto(m.Id, m.Title, m.Description, m.DisplayOrder, m.IsPreview, m.CourseId,
+            m.Lessons.OrderBy(l => l.DisplayOrder).Select(l => (object)new
             {
-                var kids = allModuleLessons.Where(x => x.ParentLessonId == l.Id).OrderBy(k => k.DisplayOrder).ToList();
-                var children = kids.Select(k => MapLessonWithChildren(k, moduleTitle, allModuleLessons)).ToList();
-                return new
-                {
-                    l.Id,
-                    l.Title,
-                    l.Description,
-                    Type = l.Type.ToString(),
-                    l.IsPreview,
-                    l.IsPublished,
-                    l.DisplayOrder,
-                    l.DurationSecs,
-                    l.ModuleId,
-                    ModuleTitle = moduleTitle,
-                    l.VideoUrl,
-                    l.FileUrl,
-                    l.Content,
-                    l.ParentLessonId,
-                    // Uses the same defensive ContentBlocks.Parse helper as
-                    // everywhere else in the app (LessonsController) instead
-                    // of raw JsonElement.GetArrayLength(), which throws
-                    // InvalidOperationException on any lesson whose stored
-                    // ContentBlocksJson isn't a well-formed JSON array —
-                    // a real possibility for older/seeded rows predating
-                    // this column's current shape.
-                    ContentBlocksCount = ContentBlocks.Parse(l.ContentBlocksJson).Count,
-                    Lessons = children, // nested sub-lessons (tree)
-                };
-            }
-
-            // Plain Where() filtering instead of a Dictionary<int?, ...>
-            // keyed by a nullable lookup — sidesteps the
-            // ArgumentNullException that TryGetValue(null, ...) was
-            // throwing during enumeration/serialization for root-level
-            // lessons (ParentLessonId == null).
-            var result = modules.Select(m =>
-            {
-                var allModuleLessons = m.Lessons.ToList();
-                var rootLessons = allModuleLessons.Where(l => l.ParentLessonId == null).OrderBy(l => l.DisplayOrder).ToList();
-                return new ModuleDto(m.Id, m.Title, m.Description, m.DisplayOrder, m.IsPreview, m.CourseId,
-                    rootLessons.Select(l => MapLessonWithChildren(l, m.Title, allModuleLessons)).ToList());
-            }).ToList();
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            // Surfaces the REAL database/server error in the response body
-            // instead of a bare 500 — lets the browser's Network tab show
-            // exactly what failed (e.g. "Unknown column 'ParentLessonId'")
-            // without needing direct server log access.
-            return StatusCode(500, new
-            {
-                message = ex.Message,
-                inner = ex.InnerException?.Message,
-                type = ex.GetType().Name
-            });
-        }
+                l.Id,
+                l.Title,
+                l.Description,
+                Type = l.Type.ToString(),
+                l.IsPreview,
+                l.IsPublished,
+                l.DisplayOrder,
+                l.DurationSecs,
+                l.ModuleId,
+                ModuleTitle = m.Title,
+                l.VideoUrl,
+                l.FileUrl,
+                l.Content,
+                ContentBlocksCount = string.IsNullOrEmpty(l.ContentBlocksJson) ? 0 :
+                    System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(l.ContentBlocksJson).GetArrayLength(),
+                HasExam = l.Exam != null && l.Exam.IsActive,
+                RequireExamToProgress = l.RequireExamToProgress,
+                ExamPassPercent = l.Exam != null ? (int?)l.Exam.PassPercent : null,
+            }).ToList())));
     }
 
     [HttpPost]
