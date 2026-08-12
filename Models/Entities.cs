@@ -250,8 +250,65 @@ public class Lesson
     public int? ParentLessonId { get; set; }
     public Lesson? ParentLesson { get; set; }
     public ICollection<Lesson> ChildLessons { get; set; } = [];
+    // If true — student must pass this lesson's exam to unlock next lesson
+    public bool RequireExamToProgress { get; set; } = false;
+    public LessonExam? Exam { get; set; }
     public ICollection<LessonProgress> Progresses { get; set; } = [];
     public ICollection<LessonResource> Resources { get; set; } = [];
+}
+
+// ─── LESSON EXAM ──────────────────────────────────────────────────────────────
+// Each lesson can have one exam. Student must pass before next lesson unlocks.
+public class LessonExam
+{
+    [Key] public int Id { get; set; }
+    public int LessonId { get; set; }
+    public Lesson Lesson { get; set; } = null!;
+    public string Title { get; set; } = "Lesson Quiz";
+    public string? Description { get; set; }
+    public int PassPercent { get; set; } = 60;  // min % to pass
+    public int MaxAttempts { get; set; } = 3;   // 0 = unlimited
+    public bool IsRequired { get; set; } = true; // must pass to proceed
+    public bool IsActive { get; set; } = true;
+    public ICollection<LessonExamQuestion> Questions { get; set; } = [];
+    public ICollection<LessonExamAttempt> Attempts { get; set; } = [];
+}
+
+// ─── LESSON EXAM QUESTION ─────────────────────────────────────────────────────
+// QuestionType for lesson exam
+public enum LessonQuestionType { SingleChoice, MultiChoice, TrueFalse, ShortAnswer, TextArea }
+
+public class LessonExamQuestion
+{
+    [Key] public int Id { get; set; }
+    public int LessonExamId { get; set; }
+    public LessonExam Exam { get; set; } = null!;
+    public string QuestionText { get; set; } = "";
+    public LessonQuestionType QuestionType { get; set; } = LessonQuestionType.SingleChoice;
+    public string? OptionA { get; set; }
+    public string? OptionB { get; set; }
+    public string? OptionC { get; set; }
+    public string? OptionD { get; set; }
+    // For SingleChoice/TrueFalse: "A","B","C","D","True","False"
+    // For MultiChoice: comma-separated e.g. "A,C"
+    // For ShortAnswer/TextArea: null (manual grading)
+    public string? CorrectOption { get; set; }
+    public string? Explanation { get; set; }
+    public int DisplayOrder { get; set; }
+}
+
+// ─── LESSON EXAM ATTEMPT ──────────────────────────────────────────────────────
+public class LessonExamAttempt
+{
+    [Key] public int Id { get; set; }
+    public int LessonExamId { get; set; }
+    public LessonExam Exam { get; set; } = null!;
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+    public int Score { get; set; }   // % score
+    public bool Passed { get; set; }
+    public string? AnswersJson { get; set; }   // {questionId: "A", ...}
+    public DateTime AttemptedAt { get; set; } = DateTime.UtcNow;
 }
 
 // ─── LESSON RESOURCE ──────────────────────────────────────────────────────────
