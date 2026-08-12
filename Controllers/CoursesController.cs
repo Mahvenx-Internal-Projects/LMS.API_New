@@ -4,6 +4,7 @@ using LMS.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Data.Common;
 
 namespace LMS.API.Controllers;
 
@@ -228,12 +229,46 @@ public class ModulesController(LmsDbContext db) : ControllerBase
     {
         var modules = await db.Modules
             .Include(m => m.Lessons.OrderBy(l => l.DisplayOrder))
-            .Include(m => m.Lessons).ThenInclude(l => l.Exam)
             .Where(m => m.CourseId == courseId)
             .OrderBy(m => m.DisplayOrder)
             .ToListAsync();
+
+        // Fetch ALL lessons for this course (including sub-lessons at any depth)
+        var moduleIds = modules.Select(m => m.Id).ToList();
+        var allCourseLessons = await db.Lessons
+            .Where(l => moduleIds.Contains(l.ModuleId))
+            .OrderBy(l => l.DisplayOrder)
+            .ToListAsync();
+
+        // Get lesson IDs that have exams (safe — works even if LessonExam table doesn't exist yet)
+        var lessonIds = allCourseLessons.Select(l => l.Id).ToList();
+        HashSet<int> examLessonIds = [];
+        HashSet<int> requiredExamIds = [];
+        try
+        {
+            // Use raw SQL — safe even if table doesn't exist yet
+            var ids = string.Join(",", lessonIds.Select(x => x.ToString()));
+            if (ids.Length > 0)
+            {
+                var conn = db.Database.GetDbConnection();
+                await conn.OpenAsync();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT LessonId, IsRequired FROM LessonExam WHERE LessonId IN ({ids}) AND IsActive=1";
+                using var rdr = await cmd.ExecuteReaderAsync();
+                while (await rdr.ReadAsync())
+                {
+                    int lid = rdr.GetInt32(0); bool req = rdr.GetBoolean(1);
+                    examLessonIds.Add(lid);
+                    if (req) requiredExamIds.Add(lid);
+                }
+            }
+        }
+        catch { /* table may not exist yet */ }
+
         return Ok(modules.Select(m => new ModuleDto(m.Id, m.Title, m.Description, m.DisplayOrder, m.IsPreview, m.CourseId,
-            m.Lessons.OrderBy(l => l.DisplayOrder).Select(l => (object)new
+            // Return ALL lessons for module (including sub-lessons) as flat list
+            // Frontend builds the tree using parentLessonId
+            allCourseLessons.Where(l => l.ModuleId == m.Id).OrderBy(l => l.DisplayOrder).Select(l => (object)new
             {
                 l.Id,
                 l.Title,
@@ -250,9 +285,9 @@ public class ModulesController(LmsDbContext db) : ControllerBase
                 l.Content,
                 ContentBlocksCount = string.IsNullOrEmpty(l.ContentBlocksJson) ? 0 :
                     System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(l.ContentBlocksJson).GetArrayLength(),
-                HasExam = l.Exam != null && l.Exam.IsActive,
-                RequireExamToProgress = l.RequireExamToProgress,
-                ExamPassPercent = l.Exam != null ? (int?)l.Exam.PassPercent : null,
+                HasExam = examLessonIds.Contains(l.Id),
+                RequireExamToProgress = requiredExamIds.Contains(l.Id),
+                ParentLessonId = l.ParentLessonId,
             }).ToList())));
     }
 
