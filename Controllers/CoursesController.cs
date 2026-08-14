@@ -4,8 +4,6 @@ using LMS.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Data.Common;
-
 namespace LMS.API.Controllers;
 
 // ═══════════════════════════════════════════════════════════════
@@ -248,12 +246,12 @@ public class ModulesController(LmsDbContext db) : ControllerBase
         {
             if (lessonIds.Count > 0)
             {
-                var ids = string.Join(",", lessonIds.Select(x => x.ToString()));
-                // Use EF raw SQL to avoid connection state issues
-                var examData = await db.Database.SqlQueryRaw<ExamLookupRow>(
-                    $"SELECT LessonId, IsRequired FROM LessonExam WHERE LessonId IN ({ids}) AND IsActive=1"
-                ).ToListAsync();
-                foreach (var row in examData)
+                // Use LessonExams DbSet directly (safe — EF handles connection)
+                var examRows = await db.LessonExams
+                    .Where(e => lessonIds.Contains(e.LessonId) && e.IsActive)
+                    .Select(e => new { e.LessonId, e.IsRequired })
+                    .ToListAsync();
+                foreach (var row in examRows)
                 {
                     examLessonIds.Add(row.LessonId);
                     if (row.IsRequired) requiredExamIds.Add(row.LessonId);
@@ -323,5 +321,3 @@ public class ModulesController(LmsDbContext db) : ControllerBase
         return NoContent();
     }
 }
-
-public class ExamLookupRow { public int LessonId { get; set; } public bool IsRequired { get; set; } }
