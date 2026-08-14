@@ -4,6 +4,7 @@ using LMS.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LMS.API.Migrations
 {
     [DbContext(typeof(LmsDbContext))]
-    partial class LmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260812080518_AddLessonExamTables")]
+    partial class AddLessonExamTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1537,9 +1540,6 @@ namespace LMS.API.Migrations
                     b.Property<int>("Difficulty")
                         .HasColumnType("int");
 
-                    b.Property<int?>("LessonId")
-                        .HasColumnType("int");
-
                     b.Property<int>("MaxAttempts")
                         .HasColumnType("int");
 
@@ -1580,8 +1580,6 @@ namespace LMS.API.Migrations
                     b.HasIndex("CourseId");
 
                     b.HasIndex("CreatedById");
-
-                    b.HasIndex("LessonId");
 
                     b.HasIndex("OrganizationId");
 
@@ -1757,9 +1755,6 @@ namespace LMS.API.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<int?>("LessonId")
-                        .HasColumnType("int");
-
                     b.Property<int>("Marks")
                         .HasColumnType("int");
 
@@ -1781,8 +1776,6 @@ namespace LMS.API.Migrations
                         .HasColumnType("longtext");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("LessonId");
 
                     b.HasIndex("MockTestId");
 
@@ -2431,9 +2424,6 @@ namespace LMS.API.Migrations
                     b.Property<int>("DurationDays")
                         .HasColumnType("int");
 
-                    b.Property<int?>("LessonId")
-                        .HasColumnType("int");
-
                     b.Property<string>("Notes")
                         .HasColumnType("longtext");
 
@@ -2455,8 +2445,6 @@ namespace LMS.API.Migrations
                     b.HasIndex("CourseId");
 
                     b.HasIndex("CreatedById");
-
-                    b.HasIndex("LessonId");
 
                     b.HasIndex("OrganizationId");
 
@@ -3139,10 +3127,6 @@ namespace LMS.API.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Lesson", "Lesson")
-                        .WithMany()
-                        .HasForeignKey("LessonId");
-
                     b.HasOne("Organization", "Organization")
                         .WithMany()
                         .HasForeignKey("OrganizationId")
@@ -3152,8 +3136,6 @@ namespace LMS.API.Migrations
                     b.Navigation("Course");
 
                     b.Navigation("CreatedBy");
-
-                    b.Navigation("Lesson");
 
                     b.Navigation("Organization");
                 });
@@ -3216,17 +3198,11 @@ namespace LMS.API.Migrations
 
             modelBuilder.Entity("MockTestQuestion", b =>
                 {
-                    b.HasOne("Lesson", "Lesson")
-                        .WithMany()
-                        .HasForeignKey("LessonId");
-
                     b.HasOne("MockTest", "MockTest")
                         .WithMany("Questions")
                         .HasForeignKey("MockTestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Lesson");
 
                     b.Navigation("MockTest");
                 });
@@ -3368,10 +3344,6 @@ namespace LMS.API.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Lesson", "Lesson")
-                        .WithMany()
-                        .HasForeignKey("LessonId");
-
                     b.HasOne("Organization", "Organization")
                         .WithMany()
                         .HasForeignKey("OrganizationId")
@@ -3381,8 +3353,6 @@ namespace LMS.API.Migrations
                     b.Navigation("Course");
 
                     b.Navigation("CreatedBy");
-
-                    b.Navigation("Lesson");
 
                     b.Navigation("Organization");
                 });

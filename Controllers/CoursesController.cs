@@ -246,24 +246,21 @@ public class ModulesController(LmsDbContext db) : ControllerBase
         HashSet<int> requiredExamIds = [];
         try
         {
-            // Use raw SQL — safe even if table doesn't exist yet
-            var ids = string.Join(",", lessonIds.Select(x => x.ToString()));
-            if (ids.Length > 0)
+            if (lessonIds.Count > 0)
             {
-                var conn = db.Database.GetDbConnection();
-                await conn.OpenAsync();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"SELECT LessonId, IsRequired FROM LessonExam WHERE LessonId IN ({ids}) AND IsActive=1";
-                using var rdr = await cmd.ExecuteReaderAsync();
-                while (await rdr.ReadAsync())
+                var ids = string.Join(",", lessonIds.Select(x => x.ToString()));
+                // Use EF raw SQL to avoid connection state issues
+                var examData = await db.Database.SqlQueryRaw<ExamLookupRow>(
+                    $"SELECT LessonId, IsRequired FROM LessonExam WHERE LessonId IN ({ids}) AND IsActive=1"
+                ).ToListAsync();
+                foreach (var row in examData)
                 {
-                    int lid = rdr.GetInt32(0); bool req = rdr.GetBoolean(1);
-                    examLessonIds.Add(lid);
-                    if (req) requiredExamIds.Add(lid);
+                    examLessonIds.Add(row.LessonId);
+                    if (row.IsRequired) requiredExamIds.Add(row.LessonId);
                 }
             }
         }
-        catch { /* table may not exist yet */ }
+        catch { /* LessonExam table may not exist yet — silently skip */ }
 
         return Ok(modules.Select(m => new ModuleDto(m.Id, m.Title, m.Description, m.DisplayOrder, m.IsPreview, m.CourseId,
             // Return ALL lessons for module (including sub-lessons) as flat list
@@ -326,3 +323,5 @@ public class ModulesController(LmsDbContext db) : ControllerBase
         return NoContent();
     }
 }
+
+public class ExamLookupRow { public int LessonId { get; set; } public bool IsRequired { get; set; } }

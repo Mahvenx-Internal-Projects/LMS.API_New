@@ -179,10 +179,10 @@ public record UpdateLiveClassRequest(string? Title, string? Description, DateTim
 
 // ─── MOCK TEST ─────────────────────────────────────────────────────────────────
 public record MockTestDto(int Id, string Title, string? Description, string? Topic, string Difficulty, string Status, int TimeLimitMins, int TotalQuestions, int PassMarkPercent, bool RandomizeQuestions, bool ShowResultImmediately, int MaxAttempts, string? Tags, int OrganizationId, int? CourseId, DateTime CreatedAt, int AttemptCount, List<MockTestQuestionDto>? Questions);
-public record CreateMockTestRequest(string Title, string? Description, string? Topic, string Difficulty, int TimeLimitMins, int TotalQuestions, int PassMarkPercent, bool RandomizeQuestions, bool ShowResultImmediately, int MaxAttempts, string? Tags, int OrganizationId, int? CourseId, int CreatedById);
-public record MockTestQuestionDto(int Id, string Text, string? ImageUrl, string? Explanation, string? ExplanationImageUrl, string? FormulaLatex, string Topic, string Difficulty, string QuestionType, int Marks, int NegativeMarks, int DisplayOrder, bool IsActive, List<MockTestOptionDto> Options);
+public record CreateMockTestRequest(string Title, string? Description, string? Topic, string Difficulty, int TimeLimitMins, int TotalQuestions, int PassMarkPercent, bool RandomizeQuestions, bool ShowResultImmediately, int MaxAttempts, string? Tags, int OrganizationId, int? CourseId, int? LessonId, int CreatedById);
+public record MockTestQuestionDto(int Id, string Text, string? ImageUrl, string? Explanation, string? ExplanationImageUrl, string? FormulaLatex, string Topic, string Difficulty, string QuestionType, int Marks, int NegativeMarks, int DisplayOrder, bool IsActive, int? LessonId, List<MockTestOptionDto> Options);
 public record MockTestOptionDto(int Id, string Text, string? ImageUrl, bool IsCorrect, int DisplayOrder);
-public record AddMockQuestionRequest(string Text, string Topic, string Difficulty, string QuestionType, int Marks, int NegativeMarks, string? Explanation, string? ExplanationImageUrl, string? ImageUrl, string? FormulaLatex, int MockTestId, List<CreateMockOptionRequest> Options);
+public record AddMockQuestionRequest(string Text, string Topic, string Difficulty, string QuestionType, int Marks, int NegativeMarks, string? Explanation, string? ExplanationImageUrl, string? ImageUrl, string? FormulaLatex, int MockTestId, int? LessonId, List<CreateMockOptionRequest> Options);
 public record CreateMockOptionRequest(string Text, bool IsCorrect, string? ImageUrl = null);
 public record StartMockAttemptRequest(int MockTestId, int StudentId);
 public record SubmitMockAttemptRequest(int AttemptId, List<MockAnswerEntry> Answers, int TimeTakenSecs);

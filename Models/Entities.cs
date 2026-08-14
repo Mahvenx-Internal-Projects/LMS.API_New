@@ -418,6 +418,8 @@ public class MockTest
     public Organization Organization { get; set; } = null!;
     public int? CourseId { get; set; }
     public Course? Course { get; set; }
+    public int? LessonId { get; set; }          // optional: link test to specific lesson
+    public Lesson? Lesson { get; set; }
     public int CreatedById { get; set; }
     public User CreatedBy { get; set; } = null!;
     public ICollection<MockTestQuestion> Questions { get; set; } = [];
@@ -433,12 +435,14 @@ public class MockTestQuestion
     public string? ExplanationImageUrl { get; set; }
     public string? FormulaLatex { get; set; }
     public string Topic { get; set; } = "General";
+    public int? LessonId { get; set; }          // optional FK to Lesson for lesson-wise tagging
+    public Lesson? Lesson { get; set; }
     public MockTestDifficulty Difficulty { get; set; } = MockTestDifficulty.Medium;
     public MockQuestionType QuestionType { get; set; } = MockQuestionType.SingleChoice;
     public int Marks { get; set; } = 1;
     public int NegativeMarks { get; set; } = 0;
     public int DisplayOrder { get; set; }
-    public bool IsActive { get; set; } = true; // false = hidden from exam, not shown to students
+    public bool IsActive { get; set; } = true;
     public int MockTestId { get; set; }
     public MockTest MockTest { get; set; } = null!;
     public ICollection<MockTestOption> Options { get; set; } = [];
@@ -736,6 +740,8 @@ public class TrainingBatch
     public Organization Organization { get; set; } = null!;
     public int? CourseId { get; set; }
     public Course? Course { get; set; }
+    public int? LessonId { get; set; }          // optional: link test to specific lesson
+    public Lesson? Lesson { get; set; }
     public int CreatedById { get; set; }
     public User CreatedBy { get; set; } = null!;
     public ICollection<BatchStudent> Students { get; set; } = [];
