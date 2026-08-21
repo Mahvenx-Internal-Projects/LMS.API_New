@@ -220,7 +220,7 @@ public class DashboardController(LmsDbContext db) : ControllerBase
     // OrgAdmin / Instructor — single organization dashboard
     // ════════════════════════════════════════════════════════════════════════
     [HttpGet("org/{orgId}")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    [Authorize]
     public async Task<IActionResult> OrgDashboard(int orgId)
     {
         var total = await db.Enrollments.CountAsync(e => e.Course.OrganizationId == orgId);
@@ -298,7 +298,7 @@ public class DashboardController(LmsDbContext db) : ControllerBase
     // GET /api/dashboard/org/{orgId}/students
     // ════════════════════════════════════════════════════════════════════════
     [HttpGet("org/{orgId}/students")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    [Authorize]
     public async Task<IActionResult> OrgStudents(int orgId)
     {
         var students = await db.Users
@@ -343,7 +343,7 @@ public class DashboardController(LmsDbContext db) : ControllerBase
     // GET /api/dashboard/org/{orgId}/students/{studentId}/report
     // ════════════════════════════════════════════════════════════════════════
     [HttpGet("org/{orgId}/students/{studentId}/report")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    [Authorize]
     public async Task<IActionResult> StudentReport(int orgId, int studentId)
     {
         var student = await db.Users.FindAsync(studentId);
@@ -423,7 +423,7 @@ public class DashboardController(LmsDbContext db) : ControllerBase
     // GET /api/dashboard/org/{orgId}/course/{courseId}/students
     // ════════════════════════════════════════════════════════════════════════
     [HttpGet("org/{orgId}/course/{courseId}/students")]
-    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    [Authorize]
     public async Task<IActionResult> CourseStudents(int orgId, int courseId)
     {
         var course = await db.Courses.FindAsync(courseId);
