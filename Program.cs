@@ -101,9 +101,11 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddCors(opt =>
     opt.AddPolicy("AllowAll", policy =>
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader()
+        policy
+            .SetIsOriginAllowed(_ => true)  // allow any origin
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials()
     )
 );
 
