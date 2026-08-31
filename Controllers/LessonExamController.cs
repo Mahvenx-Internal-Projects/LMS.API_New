@@ -55,40 +55,44 @@ public class LessonExamController(LmsDbContext db) : ControllerBase
             .Include(e => e.Questions)
             .FirstOrDefaultAsync(e => e.LessonId == lessonId);
 
-        if (exam is null) {
+        if (exam is null)
+        {
             exam = new LessonExam { LessonId = lessonId };
             db.LessonExams.Add(exam);
         }
 
-        exam.Title       = req.Title ?? "Lesson Quiz";
+        exam.Title = req.Title ?? "Lesson Quiz";
         exam.Description = req.Description;
         exam.PassPercent = req.PassPercent;
         exam.MaxAttempts = req.MaxAttempts;
-        exam.IsRequired  = req.IsRequired;
-        exam.IsActive    = req.IsActive;
+        exam.IsRequired = req.IsRequired;
+        exam.IsActive = req.IsActive;
 
         db.LessonExamQuestions.RemoveRange(exam.Questions);
         await db.SaveChangesAsync();
 
-        for (int i = 0; i < req.Questions.Count; i++) {
+        for (int i = 0; i < req.Questions.Count; i++)
+        {
             var q = req.Questions[i];
             Enum.TryParse<LessonQuestionType>(q.QuestionType, out var qt);
-            db.LessonExamQuestions.Add(new LessonExamQuestion {
-                LessonExamId  = exam.Id,
-                QuestionText  = q.QuestionText,
-                QuestionType  = qt,
-                OptionA       = q.OptionA,
-                OptionB       = q.OptionB,
-                OptionC       = q.OptionC,
-                OptionD       = q.OptionD,
+            db.LessonExamQuestions.Add(new LessonExamQuestion
+            {
+                LessonExamId = exam.Id,
+                QuestionText = q.QuestionText,
+                QuestionType = qt,
+                OptionA = q.OptionA,
+                OptionB = q.OptionB,
+                OptionC = q.OptionC,
+                OptionD = q.OptionD,
                 CorrectOption = q.CorrectOption,
-                Explanation   = q.Explanation,
-                DisplayOrder  = i,
+                Explanation = q.Explanation,
+                DisplayOrder = i,
             });
         }
 
         var lesson = await db.Lessons.FindAsync(lessonId);
-        if (lesson is not null) {
+        if (lesson is not null)
+        {
             lesson.RequireExamToProgress = req.IsRequired && req.IsActive;
         }
         await db.SaveChangesAsync();
@@ -125,15 +129,17 @@ public class LessonExamController(LmsDbContext db) : ControllerBase
         int correct = 0, total = exam.Questions.Count;
         var results = new List<object>();
 
-        foreach (var q in exam.Questions) {
+        foreach (var q in exam.Questions)
+        {
             var userAns = req.Answers.GetValueOrDefault(q.Id.ToString(), "");
             bool isCorrect = false;
 
-            switch (q.QuestionType) {
+            switch (q.QuestionType)
+            {
                 case LessonQuestionType.MultiChoice:
                     // both must have same set of answers
                     var correctSet = (q.CorrectOption ?? "").Split(',').Select(x => x.Trim()).OrderBy(x => x).ToList();
-                    var userSet    = userAns.Split(',').Select(x => x.Trim()).OrderBy(x => x).ToList();
+                    var userSet = userAns.Split(',').Select(x => x.Trim()).OrderBy(x => x).ToList();
                     isCorrect = correctSet.SequenceEqual(userSet);
                     break;
                 case LessonQuestionType.ShortAnswer:
@@ -147,40 +153,60 @@ public class LessonExamController(LmsDbContext db) : ControllerBase
             }
 
             if (isCorrect) correct++;
-            results.Add(new {
-                questionId = q.Id, userAnswer = userAns,
-                correctAnswer = q.CorrectOption, isCorrect,
+            results.Add(new
+            {
+                questionId = q.Id,
+                userAnswer = userAns,
+                correctAnswer = q.CorrectOption,
+                isCorrect,
                 explanation = q.Explanation
             });
         }
 
-        int score  = total > 0 ? (int)Math.Round(correct * 100.0 / total) : 100;
+        int score = total > 0 ? (int)Math.Round(correct * 100.0 / total) : 100;
         bool passed = score >= exam.PassPercent;
 
-        var attempt = new LessonExamAttempt {
-            LessonExamId = examId, UserId = userId,
-            Score = score, Passed = passed,
+        // Validate user exists in DB before saving
+        var userExists = await db.Users.AnyAsync(u => u.Id == userId);
+        if (!userExists)
+            return BadRequest(new { message = $"User {userId} not found in database. Please log out and log back in." });
+
+        var attempt = new LessonExamAttempt
+        {
+            LessonExamId = examId,
+            UserId = userId,
+            Score = score,
+            Passed = passed,
             AnswersJson = JsonSerializer.Serialize(req.Answers),
             AttemptedAt = DateTime.UtcNow,
         };
         db.LessonExamAttempts.Add(attempt);
 
-        if (passed) {
+        if (passed)
+        {
             var progress = await db.LessonProgresses
                 .FirstOrDefaultAsync(p => p.UserId == userId && p.LessonId == exam.LessonId);
             if (progress is not null) { progress.IsCompleted = true; progress.UpdatedAt = DateTime.UtcNow; }
-            else db.LessonProgresses.Add(new LessonProgress {
-                UserId = userId, LessonId = exam.LessonId,
-                IsCompleted = true, UpdatedAt = DateTime.UtcNow });
+            else if (userExists) db.LessonProgresses.Add(new LessonProgress
+            {
+                UserId = userId,
+                LessonId = exam.LessonId,
+                IsCompleted = true,
+                UpdatedAt = DateTime.UtcNow
+            });
         }
         await db.SaveChangesAsync();
 
-        return Ok(new {
-            score, passed, correct, total,
-            passPercent  = exam.PassPercent,
+        return Ok(new
+        {
+            score,
+            passed,
+            correct,
+            total,
+            passPercent = exam.PassPercent,
             attemptsUsed = exam.Attempts.Count + 1,
             attemptsLeft = exam.MaxAttempts == 0 ? 999 : exam.MaxAttempts - (exam.Attempts.Count + 1),
-            message      = passed ? $"🎉 Congratulations! You scored {score}%. You can proceed to the next lesson." : $"You scored {score}%. You need {exam.PassPercent}% to pass.",
+            message = passed ? $"🎉 Congratulations! You scored {score}%. You can proceed to the next lesson." : $"You scored {score}%. You need {exam.PassPercent}% to pass.",
             results,
             correctAnswers = passed ? exam.Questions.ToDictionary(q => q.Id.ToString(), q => q.CorrectOption) : null
         });
@@ -214,14 +240,27 @@ public class LessonExamController(LmsDbContext db) : ControllerBase
     }
 
     // ── Helper ────────────────────────────────────────────────────
-    static object MapExam(LessonExam e) => new {
-        e.Id, e.LessonId, e.Title, e.Description,
-        e.PassPercent, e.MaxAttempts, e.IsRequired, e.IsActive,
+    static object MapExam(LessonExam e) => new
+    {
+        e.Id,
+        e.LessonId,
+        e.Title,
+        e.Description,
+        e.PassPercent,
+        e.MaxAttempts,
+        e.IsRequired,
+        e.IsActive,
         questions = e.Questions.Select(q => new {
-            q.Id, q.QuestionText,
+            q.Id,
+            q.QuestionText,
             questionType = q.QuestionType.ToString(),
-            q.OptionA, q.OptionB, q.OptionC, q.OptionD,
-            q.CorrectOption, q.Explanation, q.DisplayOrder
+            q.OptionA,
+            q.OptionB,
+            q.OptionC,
+            q.OptionD,
+            q.CorrectOption,
+            q.Explanation,
+            q.DisplayOrder
         })
     };
 }

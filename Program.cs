@@ -57,11 +57,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-            ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            ClockSkew = TimeSpan.Zero
+            ValidateIssuer = false,  // don't validate issuer - allows tokens from any env
+            ValidateAudience = false,  // don't validate audience - allows tokens from any env
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(5)  // allow 5 min clock difference between servers
         };
     });
 
