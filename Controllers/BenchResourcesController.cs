@@ -50,19 +50,32 @@ public class BenchResourcesController(LmsDbContext db, ICloudflareService r2) : 
         [FromQuery] string? search, [FromQuery] string? status,
         [FromQuery] string? type)
     {
-        var q = db.BenchResources.AsQueryable();
-        if (orgId.HasValue) q = q.Where(r => r.OrganizationId == orgId.Value);
-        if (!string.IsNullOrEmpty(domain) && domain != "All") q = q.Where(r => r.Domain.ToString() == domain);
-        if (!string.IsNullOrEmpty(status) && status != "All") q = q.Where(r => r.Status.ToString() == status);
-        if (!string.IsNullOrEmpty(type) && type != "All") q = q.Where(r => r.CandidateType.ToString() == type);
-        if (!string.IsNullOrEmpty(search))
-            q = q.Where(r => r.Name.Contains(search) || r.Email.Contains(search) ||
-                              r.Phone.Contains(search) || r.SkillSet.Contains(search) ||
-                              r.CurrentLocation.Contains(search) || r.PreparedLocation.Contains(search));
+        var baseQ = db.BenchResources.AsQueryable();
+        if (orgId.HasValue && orgId.Value > 0)
+            baseQ = baseQ.Where(r => r.OrganizationId == orgId.Value);
 
-        var list = await q.OrderByDescending(r => r.CreatedAt).ToListAsync();
-        return Ok(list.Select(Project));
+        // Load to memory first — EF cannot translate enum.ToString() to MySQL
+        var all = await baseQ.OrderByDescending(r => r.CreatedAt).ToListAsync();
+
+        if (!string.IsNullOrEmpty(domain) && domain != "All")
+            all = all.Where(r => r.Domain.ToString() == domain).ToList();
+        if (!string.IsNullOrEmpty(status) && status != "All")
+            all = all.Where(r => r.Status.ToString() == status).ToList();
+        if (!string.IsNullOrEmpty(type) && type != "All")
+            all = all.Where(r => r.CandidateType.ToString() == type).ToList();
+        if (!string.IsNullOrEmpty(search))
+            all = all.Where(r =>
+                r.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                r.Email.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                r.Phone.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                r.SkillSet.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                r.CurrentLocation.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                r.PreparedLocation.Contains(search, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+
+        return Ok(all.Select(Project));
     }
+
 
     // GET /api/bench/{id}
     [HttpGet("{id}")]
