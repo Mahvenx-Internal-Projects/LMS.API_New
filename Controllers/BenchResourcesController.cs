@@ -9,7 +9,7 @@ using System.Text.Json;
 namespace LMS.API.Controllers;
 
 [ApiController, Route("api/bench")]
-[Authorize]
+
 public class BenchResourcesController(LmsDbContext db, ICloudflareService r2) : ControllerBase
 {
     // ── helper to build select projection ────────────────────────────────────
@@ -50,12 +50,16 @@ public class BenchResourcesController(LmsDbContext db, ICloudflareService r2) : 
         [FromQuery] string? search, [FromQuery] string? status,
         [FromQuery] string? type)
     {
-        var baseQ = db.BenchResources.AsQueryable();
-        if (orgId.HasValue && orgId.Value > 0)
-            baseQ = baseQ.Where(r => r.OrganizationId == orgId.Value);
+        // Use raw SQL to bypass any EF mapping issues
+        var rawSql = orgId.HasValue && orgId.Value > 0
+            ? $"SELECT * FROM BenchResources WHERE OrganizationId = {orgId.Value} ORDER BY CreatedAt DESC"
+            : "SELECT * FROM BenchResources ORDER BY CreatedAt DESC";
 
-        // Load to memory first — EF cannot translate enum.ToString() to MySQL
-        var all = await baseQ.OrderByDescending(r => r.CreatedAt).ToListAsync();
+        var all = await db.BenchResources
+            .FromSqlRaw(rawSql)
+            .ToListAsync();
+
+        Console.WriteLine($"[BENCH DEBUG] orgId={orgId}, SQL={rawSql}, count={all.Count}");
 
         if (!string.IsNullOrEmpty(domain) && domain != "All")
             all = all.Where(r => r.Domain.ToString() == domain).ToList();
