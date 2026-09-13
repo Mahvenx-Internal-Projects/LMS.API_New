@@ -20,7 +20,7 @@ public static class DbSeeder
             AccentColor = "#06b6d4",
             ThemeFont = "Plus Jakarta Sans",
             Tagline = "Empowering Careers Through Technology Education",
-            PortalUrl = "http://localhost:5173",
+            PortalUrl = "https://scolared.com",
             Currency = "INR",
             IsActive = true
         };
@@ -630,5 +630,474 @@ public static class DbSeeder
         };
         db.MockTestOptions.AddRange(opts);
         await db.SaveChangesAsync();
+
+        // ════════════════════════════════════════════════════════════════════════════
+        // SEED DATA — Training Batches, Live Classes, Assignment Submissions
+        // Paste this block inside DbSeeder.cs, after courses/users/enrollments are
+        // already seeded (it needs CourseId, OrganizationId, and student UserIds).
+        // ════════════════════════════════════════════════════════════════════════════
+
+        if (!db.TrainingBatches.Any())
+        {
+            var org1 = db.Organizations.First();
+            var admin = db.Users.First(u => u.Role == UserRole.OrgAdmin || u.Role == UserRole.SuperAdmin);
+            var course = db.Courses.FirstOrDefault(c => c.OrganizationId == org1.Id);
+            var students1 = db.Users.Where(u => u.Role == UserRole.Student && u.OrganizationId == org1.Id).Take(5).ToList();
+
+            // ── Training Batches ───────────────────────────────────────────────
+            var batch1 = new TrainingBatch
+            {
+                BatchName = "Full Stack Development — Batch 7",
+                Description = "Evening batch covering React, .NET, and MySQL",
+                StartDate = DateTime.UtcNow.AddDays(-10),       // already started → Active
+                DurationDays = 60,
+                TotalFee = 25000,
+                Notes = "Includes live project + certification",
+                OrganizationId = org.Id,
+                CourseId = course?.Id,
+                CreatedById = admin.Id,
+                Status = BatchStatus.Active,
+            };
+
+            var batch2 = new TrainingBatch
+            {
+                BatchName = "Data Analytics Bootcamp — Batch 3",
+                Description = "Weekend batch — Excel, SQL, Power BI",
+                StartDate = DateTime.UtcNow.AddDays(7),          // starts next week → Upcoming
+                DurationDays = 45,
+                TotalFee = 18000,
+                Notes = "Beginner friendly, no prior experience needed",
+                OrganizationId = org.Id,
+                CourseId = course?.Id,
+                CreatedById = admin.Id,
+                Status = BatchStatus.Upcoming,
+            };
+
+            var batch3 = new TrainingBatch
+            {
+                BatchName = "UI/UX Design Sprint — Batch 1",
+                Description = "Free intro batch on Figma & design thinking",
+                StartDate = DateTime.UtcNow.AddDays(-45),
+                DurationDays = 30,                                  // ended → Completed
+                TotalFee = 0,
+                OrganizationId = org.Id,
+                CourseId = course?.Id,
+                CreatedById = admin.Id,
+                Status = BatchStatus.Completed,
+            };
+
+            db.TrainingBatches.AddRange(batch1, batch2, batch3);
+            db.SaveChanges();
+
+            // ── Batch students (mix of existing users + guests) ────────────────
+            var batchStudents = new List<BatchStudent>();
+            for (int i = 0; i < students1.Count; i++)
+            {
+                var paid = i % 3 == 0 ? 25000 : i % 3 == 1 ? 12000 : 0;
+                batchStudents.Add(new BatchStudent
+                {
+                    BatchId = batch1.Id,
+                    UserId = students[i].Id,
+                    TotalFee = 25000,
+                    PaidAmount = paid,
+                    PaymentStatus = paid >= 25000 ? PaymentStatus.FullyPaid
+                                   : paid > 0 ? PaymentStatus.PartiallyPaid
+                                   : PaymentStatus.Pending,
+                    Status = BatchStudentStatus.Active,
+                    JoinedAt = batch1.StartDate.AddDays(-1),
+                });
+            }
+            // Guest students (no account) for batch2
+            batchStudents.Add(new BatchStudent
+            {
+                BatchId = batch2.Id,
+                GuestName = "Priya Sharma",
+                GuestEmail = "priya.sharma@example.com",
+                GuestMobile = "9876543210",
+                TotalFee = 18000,
+                PaidAmount = 9000,
+                PaymentStatus = PaymentStatus.PartiallyPaid,
+                Status = BatchStudentStatus.Active,
+            });
+            batchStudents.Add(new BatchStudent
+            {
+                BatchId = batch2.Id,
+                GuestName = "Rahul Verma",
+                GuestEmail = "rahul.verma@example.com",
+                GuestMobile = "9876501234",
+                TotalFee = 18000,
+                PaidAmount = 0,
+                PaymentStatus = PaymentStatus.Pending,
+                Status = BatchStudentStatus.Active,
+            });
+            db.BatchStudents.AddRange(batchStudents);
+            db.SaveChanges();
+
+            // ── Live Classes (Zoom/Meet sessions) ───────────────────────────────
+            if (course is not null)
+            {
+                var liveClasses = new List<LiveClass>
+        {
+            new() {
+                Title = "Live Q&A — React Hooks Deep Dive",
+                Description = "Open doubt-clearing session on useEffect, useMemo, custom hooks",
+                ScheduledAt = DateTime.UtcNow.AddDays(2).Date.AddHours(19),
+                DurationMinutes = 60,
+                Platform = LiveClassPlatform.Zoom,
+                MeetingLink = "https://zoom.us/j/1234567890",
+                MeetingId = "123 456 7890",
+                MeetingPassword = "eksha123",
+                CourseId = course.Id,
+                HostId = admin.Id,
+                Status = LiveClassStatus.Scheduled,
+            },
+            new() {
+                Title = "Live Coding — Building a REST API with .NET 8",
+                Description = "Hands-on walkthrough building CRUD endpoints from scratch",
+                ScheduledAt = DateTime.UtcNow.AddDays(5).Date.AddHours(18),
+                DurationMinutes = 90,
+                Platform = LiveClassPlatform.GoogleMeet,
+                MeetingLink = "https://meet.google.com/abc-defg-hij",
+                CourseId = course.Id,
+                HostId = admin.Id,
+                Status = LiveClassStatus.Scheduled,
+            },
+            new() {
+                Title = "Recorded Session — Intro to MySQL",
+                Description = "Past session, recording available",
+                ScheduledAt = DateTime.UtcNow.AddDays(-7),
+                DurationMinutes = 75,
+                Platform = LiveClassPlatform.Zoom,
+                RecordingUrl = "https://example.com/recordings/mysql-intro.mp4",
+                CourseId = course.Id,
+                HostId = admin.Id,
+                Status = LiveClassStatus.Completed,
+                EmailSent = true,
+            },
+        };
+                db.LiveClasses.AddRange(liveClasses);
+                db.SaveChanges();
+
+                // Auto-add enrolled students as attendees for the upcoming sessions
+                foreach (var lc in liveClasses.Where(l => l.Status == LiveClassStatus.Scheduled))
+                    foreach (var s in students)
+                        db.LiveClassAttendees.Add(new LiveClassAttendee { LiveClassId = lc.Id, UserId = s.Id });
+                db.SaveChanges();
+            }
+
+            Console.WriteLine($"Seeded {db.TrainingBatches.Count()} training batches, " +
+                               $"{db.BatchStudents.Count()} batch students, " +
+                               $"{db.LiveClasses.Count()} live classes.");
+        }
+
+        // ════════════════════════════════════════════════════════════════════════════
+        // SEED — Assignment + submissions in various states (for testing the
+        // submit → grade → request-resubmit → resubmit flow end-to-end)
+        // ════════════════════════════════════════════════════════════════════════════
+
+        if (!db.Assignments.Any())
+        {
+            var org2 = db.Organizations.First();
+            var admin = db.Users.First(u => u.Role == UserRole.OrgAdmin || u.Role == UserRole.SuperAdmin || u.Role == UserRole.Instructor);
+            var course = db.Courses.FirstOrDefault(c => c.OrganizationId == org2.Id);
+            var students2 = db.Users.Where(u => u.Role == UserRole.Student && u.OrganizationId == org2.Id).Take(4).ToList();
+
+            if (course is not null && students2.Count >= 4)
+            {
+                var assignment1 = new Assignment
+                {
+                    Title = "Module 1 Exercise — Variables & Loops",
+                    Description = "Write 5 small programs demonstrating for/while loops and variable scope. Submit your code as a GitHub gist or Drive link.",
+                    MaxMarks = 100,
+                    DueDate = DateTime.UtcNow.AddDays(5),
+                    CourseId = course.Id,
+                    CreatedById = admin.Id,
+                    Status = AssignmentStatus.Published,
+                };
+
+                var assignment2 = new Assignment
+                {
+                    Title = "Final Project — Build a Mini CRUD App",
+                    Description = "Build a small full-stack app (any stack) with Create, Read, Update, Delete on one resource. Include a README.",
+                    MaxMarks = 100,
+                    DueDate = DateTime.UtcNow.AddDays(-2),     // overdue — for testing 'Late' status
+                    CourseId = course.Id,
+                    CreatedById = admin.Id,
+                    Status = AssignmentStatus.Published,
+                };
+
+                db.Assignments.AddRange(assignment1, assignment2);
+                db.SaveChanges();
+
+                // ── Submission states across the 4 students ─────────────────────
+                // Student[0]: Not submitted yet (NotSubmitted — no row at all)
+                // Student[1]: Submitted, awaiting grading
+                var sub1 = new AssignmentSubmission
+                {
+                    AssignmentId = assignment1.Id,
+                    StudentId = students[1].Id,
+                    SubmissionText = "Completed all 5 exercises, link to gist below.",
+                    FileUrl = "https://gist.github.com/example/loops-exercise",
+                    SubmittedAt = DateTime.UtcNow.AddDays(-1),
+                    Status = SubmissionStatus.Submitted,
+                };
+
+                // Student[2]: Graded with feedback
+                var sub2 = new AssignmentSubmission
+                {
+                    AssignmentId = assignment1.Id,
+                    StudentId = students[2].Id,
+                    SubmissionText = "All exercises done, added bonus recursion example.",
+                    FileUrl = "https://github.com/example/student2-loops",
+                    SubmittedAt = DateTime.UtcNow.AddDays(-3),
+                    Status = SubmissionStatus.Graded,
+                    MarksObtained = 92,
+                    Feedback = "Excellent work! Clean code and the bonus recursion example was a nice touch.",
+                    GradedById = admin.Id,
+                    GradedAt = DateTime.UtcNow.AddDays(-2),
+                };
+
+                // Student[3]: Resubmission requested (no grade yet, needs to fix and resubmit)
+                var sub3 = new AssignmentSubmission
+                {
+                    AssignmentId = assignment1.Id,
+                    StudentId = students[3].Id,
+                    SubmissionText = "Submitted 3 out of 5 exercises.",
+                    FileUrl = "https://github.com/example/student3-incomplete",
+                    SubmittedAt = DateTime.UtcNow.AddDays(-4),
+                    Status = SubmissionStatus.ResubmitRequested,
+                    Feedback = "You're missing exercises 4 and 5. Please complete them and resubmit.",
+                    GradedById = admin.Id,
+                    GradedAt = DateTime.UtcNow.AddDays(-3),
+                };
+
+                // Second assignment: one late submission
+                var sub4 = new AssignmentSubmission
+                {
+                    AssignmentId = assignment2.Id,
+                    StudentId = students[1].Id,
+                    SubmissionText = "Built a simple Todo CRUD app using React + Express.",
+                    FileUrl = "https://github.com/example/todo-crud",
+                    SubmittedAt = DateTime.UtcNow.AddDays(-1),    // after due date → Late
+                    Status = SubmissionStatus.Late,
+                };
+
+                db.AssignmentSubmissions.AddRange(sub1, sub2, sub3, sub4);
+                db.SaveChanges();
+
+                Console.WriteLine($"Seeded 2 assignments with 4 submissions in mixed states " +
+                                   "(NotSubmitted, Submitted, Graded, ResubmitRequested, Late).");
+            }
+        }
+        // ════════════════════════════════════════════════════════════════════════════
+        // SEED — Sample About Us / Contact Us content + template selection
+        // Paste inside DbSeeder.cs after the Organization is created.
+        // ════════════════════════════════════════════════════════════════════════════
+
+        var orgToUpdate = db.Organizations.First();
+        if (string.IsNullOrEmpty(orgToUpdate.AboutUsContent))
+        {
+            orgToUpdate.ShowAboutUs = true;
+            orgToUpdate.AboutUsTemplate = "split";   // try: classic | split | timeline | card
+            orgToUpdate.AboutUsContent =
+                "<p>Founded with a mission to make quality education accessible to everyone, " +
+                "<strong>" + orgToUpdate.Name + "</strong> has trained thousands of students across " +
+                "technology, design, and business domains.</p>" +
+                "<p>Our instructors are industry practitioners who bring real-world project experience " +
+                "into every classroom session.</p>" +
+                "<p>We combine structured curriculum with hands-on mentorship to ensure every student " +
+                "is job-ready by the time they graduate.</p>";
+
+            orgToUpdate.ShowContactUs = true;
+            orgToUpdate.ContactUsTemplate = "classic";  // try: classic | split | minimal | map-focus
+            orgToUpdate.ContactEmail = "info@" + orgToUpdate.Slug + ".com";
+            orgToUpdate.ContactPhone = "+91 98765 43210";
+            orgToUpdate.ContactAddress = "3rd Floor, Tech Park,\nWhitefield, Bengaluru,\nKarnataka 560066";
+            orgToUpdate.ContactMapEmbed = "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3888.9!2d77.7499!3d12.9698!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMTLCsDU4JzExLjMiTiA3N8KwNDQnNTkuNiJF!5e0!3m2!1sen!2sin!4v1";
+
+            orgToUpdate.ShowScrollingBanner = true;
+            orgToUpdate.ScrollingBannerText = "🎉 New Batch Starting Soon | Limited Seats Available | Enroll Today";
+
+            orgToUpdate.ShowReferralOffer = true;
+            orgToUpdate.ReferralOfferText = "Earn ₹2,500 for every friend who enrolls!";
+
+            db.SaveChanges();
+            Console.WriteLine("Seeded About Us / Contact Us content + templates for " + orgToUpdate.Name);
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        // SEED — Language Master + English Translations (all orgs)
+        // ════════════════════════════════════════════════════════════════
+        if (!db.LangMasters.Any())
+        {
+            var seedOrgs = db.Organizations.ToList();
+            var translations = new Dictionary<string, string>
+            {
+                ["firstName"] = "First Name",
+                ["lastName"] = "Last Name",
+                ["email"] = "Email Address",
+                ["mobile"] = "Mobile Number",
+                ["password"] = "Password",
+                ["department"] = "Department",
+                ["location"] = "Location",
+                ["learningId"] = "Learning ID",
+                ["hireDate"] = "Hire Date",
+                ["address1"] = "Address Line 1",
+                ["address2"] = "Address Line 2",
+                ["city"] = "City",
+                ["state"] = "State",
+                ["country"] = "Country",
+                ["pin"] = "PIN Code",
+                ["addlId"] = "Additional ID",
+                ["comments"] = "Comments",
+                ["role"] = "Role",
+                ["status"] = "Status",
+                ["phone"] = "Phone",
+                ["placeholder.firstName"] = "John",
+                ["placeholder.lastName"] = "Doe",
+                ["placeholder.email"] = "you@example.com",
+                ["placeholder.mobile"] = "+91 98765 43210",
+                ["placeholder.password"] = "Min. 8 characters",
+                ["placeholder.search"] = "Search...",
+                ["placeholder.city"] = "City",
+                ["placeholder.state"] = "State",
+                ["validation.required"] = "This field is required",
+                ["validation.firstName.required"] = "First name is required",
+                ["validation.lastName.required"] = "Last name is required",
+                ["validation.email.required"] = "Email address is required",
+                ["validation.email.invalid"] = "Enter a valid email address",
+                ["validation.mobile.required"] = "Mobile number is required",
+                ["validation.mobile.invalid"] = "Enter a valid mobile number",
+                ["validation.password.required"] = "Password is required",
+                ["validation.password.minLength"] = "Password must be at least 8 characters",
+                ["validation.password.mismatch"] = "Passwords do not match",
+                ["validation.org.missing"] = "Organization not detected",
+                ["msg.registerSuccess"] = "Welcome! Your account has been created.",
+                ["msg.registerFailed"] = "Registration failed. Please try again.",
+                ["msg.loginSuccess"] = "Welcome back!",
+                ["msg.loginFailed"] = "Invalid email or password",
+                ["msg.saved"] = "Saved successfully!",
+                ["msg.deleted"] = "Deleted successfully.",
+                ["msg.error"] = "Something went wrong. Please try again.",
+                ["msg.noData"] = "No data found.",
+                ["msg.loading"] = "Loading...",
+                ["msg.registeringUnder"] = "Registering under",
+                ["msg.welcomeBack"] = "Welcome back",
+                ["msg.noNotifications"] = "No notifications yet",
+                ["page.register.title"] = "Create account",
+                ["page.register.subtitle"] = "Joining",
+                ["page.register.submit"] = "Create My Account",
+                ["page.register.haveAccount"] = "Already have an account?",
+                ["page.register.signin"] = "Sign in",
+                ["page.register.backTo"] = "Back to",
+                ["page.login.title"] = "Welcome back",
+                ["page.login.subtitle"] = "Sign in to your account",
+                ["page.login.submit"] = "Sign In",
+                ["page.login.noAccount"] = "Don't have an account?",
+                ["page.login.register"] = "Register",
+                ["page.login.forgotPassword"] = "Forgot password?",
+                ["menu.dashboard"] = "Dashboard",
+                ["menu.students"] = "Students",
+                ["menu.courses"] = "Courses",
+                ["menu.exams"] = "Mock Tests",
+                ["menu.liveclass"] = "Live Classes",
+                ["menu.payroll"] = "Payroll",
+                ["menu.bench"] = "Bench Resources",
+                ["menu.settings"] = "Org Settings",
+                ["menu.reports"] = "Reports",
+                ["menu.language"] = "Language",
+                ["menu.logout"] = "Sign Out",
+                ["menu.profile"] = "Profile",
+                ["menu.organizations"] = "Organizations",
+                ["menu.categories"] = "Categories",
+                ["menu.departments"] = "Departments",
+                ["menu.assignments"] = "Assignments",
+                ["menu.batches"] = "Training Batches",
+                ["menu.analytics"] = "Analytics",
+                ["menu.payments"] = "Payments",
+                ["menu.homepage"] = "Homepage",
+                ["menu.myCourses"] = "My Courses",
+                ["menu.catalog"] = "Course Catalog",
+                ["menu.certificates"] = "Certificates",
+                ["menu.orders"] = "Orders",
+                ["menu.interviews"] = "Interview Schedule",
+                ["menu.attendance"] = "Attendance",
+                ["label.save"] = "Save",
+                ["label.cancel"] = "Cancel",
+                ["label.add"] = "Add",
+                ["label.edit"] = "Edit",
+                ["label.delete"] = "Delete",
+                ["label.search"] = "Search",
+                ["label.filter"] = "Filter",
+                ["label.export"] = "Export",
+                ["label.import"] = "Import",
+                ["label.submit"] = "Submit",
+                ["label.confirm"] = "Confirm",
+                ["label.back"] = "Back",
+                ["label.next"] = "Next",
+                ["label.view"] = "View",
+                ["label.download"] = "Download",
+                ["label.upload"] = "Upload",
+                ["label.actions"] = "Actions",
+                ["label.active"] = "Active",
+                ["label.inactive"] = "Inactive",
+                ["label.yes"] = "Yes",
+                ["label.no"] = "No",
+                ["label.all"] = "All",
+                ["label.select"] = "Select",
+                ["label.total"] = "Total",
+                ["label.notifications"] = "Notifications",
+                ["label.markAllRead"] = "Mark all read",
+                ["label.switchView"] = "Switch View",
+                ["label.visitPortal"] = "Visit Portal",
+                ["label.collapse"] = "Collapse",
+                ["label.instructorPanel"] = "Instructor Panel",
+                ["label.viewingAs"] = "Viewing as",
+                ["label.actualRole"] = "actual role",
+            };
+
+            foreach (var seedOrg in seedOrgs)
+            {
+                // LangMaster is now global (no OrganizationId/IsDefault)
+                // Ensure English (LangID=1) exists globally
+                if (!db.LangMasters.Any(l => l.LangCode == "en"))
+                {
+                    db.LangMasters.Add(new LangMaster { LangName = "English", LangCode = "en", IsActive = true });
+                    db.SaveChanges();
+                }
+                var englishLang = db.LangMasters.First(l => l.LangCode == "en");
+
+                // Set English as default for this org
+                if (!db.OrgLangSettings.Any(s => s.OrganizationId == seedOrg.Id))
+                {
+                    db.OrgLangSettings.Add(new OrgLangSetting
+                    {
+                        OrganizationId = seedOrg.Id,
+                        LangID = englishLang.LangID,
+                        IsDefault = true
+                    });
+                    db.SaveChanges();
+                }
+
+                // Seed translations for this org
+                foreach (var kv in translations)
+                {
+                    if (!db.LangTrans.Any(t => t.LangID == englishLang.LangID && t.OrganizationId == seedOrg.Id && t.TransKey == kv.Key))
+                    {
+                        db.LangTrans.Add(new LangTrans
+                        {
+                            LangID = englishLang.LangID,
+                            TransKey = kv.Key,
+                            TransVal = kv.Value,
+                            OrganizationId = seedOrg.Id
+                        });
+                    }
+                }
+                db.SaveChanges();
+                Console.WriteLine($"Seeded {translations.Count} English translations for: {seedOrg.Name}");
+            }
+        }
+
     }
+
 }

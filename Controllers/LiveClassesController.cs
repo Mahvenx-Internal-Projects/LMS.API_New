@@ -8,6 +8,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace LMS.API.Controllers;
 
+public record AddAttendeeRequest(int UserId);
+public record AddBatchResourceRequest(string Title, string FileUrl, string FileType);
+
 [ApiController, Route("api/liveclasses"), Authorize]
 public class LiveClassesController(LmsDbContext db, IEmailService email) : ControllerBase
 {
@@ -24,12 +27,17 @@ public class LiveClassesController(LmsDbContext db, IEmailService email) : Contr
     }
 
     [HttpGet("upcoming")]
-    public async Task<IActionResult> GetUpcoming([FromQuery] int? orgId, [FromQuery] int? studentId)
+    public async Task<IActionResult> GetUpcoming([FromQuery] int? orgId, [FromQuery] int? studentId, [FromQuery] bool all = false)
     {
         var q = db.LiveClasses
             .Include(l => l.Host)
             .Include(l => l.Course)
-            .Where(l => l.ScheduledAt >= DateTime.UtcNow && l.Status == LiveClassStatus.Scheduled);
+            .AsQueryable();
+
+        // Admin view (all=true): show all batches regardless of date
+        // Student view: show only upcoming scheduled classes
+        if (!all)
+            q = q.Where(l => l.ScheduledAt >= DateTime.UtcNow && l.Status == LiveClassStatus.Scheduled);
 
         if (orgId.HasValue) q = q.Where(l => l.Course.OrganizationId == orgId.Value);
 
@@ -41,7 +49,7 @@ public class LiveClassesController(LmsDbContext db, IEmailService email) : Contr
             q = q.Where(l => enrolledIds.Contains(l.CourseId));
         }
 
-        var list = await q.OrderBy(l => l.ScheduledAt).Take(20).ToListAsync();
+        var list = await q.OrderByDescending(l => l.ScheduledAt).Take(100).ToListAsync();
         return Ok(list.Select(MapClass));
     }
 
@@ -64,16 +72,16 @@ public class LiveClassesController(LmsDbContext db, IEmailService email) : Contr
 
         var lc = new LiveClass
         {
-            Title           = req.Title,
-            Description     = req.Description,
-            ScheduledAt     = req.ScheduledAt,
+            Title = req.Title,
+            Description = req.Description,
+            ScheduledAt = req.ScheduledAt,
             DurationMinutes = req.DurationMinutes,
-            Platform        = platform,
-            MeetingLink     = req.MeetingLink,
-            MeetingId       = req.MeetingId,
+            Platform = platform,
+            MeetingLink = req.MeetingLink,
+            MeetingId = req.MeetingId,
             MeetingPassword = req.MeetingPassword,
-            CourseId        = req.CourseId,
-            HostId          = req.HostId
+            CourseId = req.CourseId,
+            HostId = req.HostId
         };
         db.LiveClasses.Add(lc);
         await db.SaveChangesAsync();
@@ -114,12 +122,12 @@ public class LiveClassesController(LmsDbContext db, IEmailService email) : Contr
         var lc = await db.LiveClasses.FindAsync(id);
         if (lc is null) return NotFound();
 
-        if (req.Title is not null)         lc.Title         = req.Title;
-        if (req.Description is not null)   lc.Description   = req.Description;
-        if (req.ScheduledAt.HasValue)      lc.ScheduledAt   = req.ScheduledAt.Value;
-        if (req.DurationMinutes.HasValue)  lc.DurationMinutes = req.DurationMinutes.Value;
-        if (req.MeetingLink is not null)   lc.MeetingLink   = req.MeetingLink;
-        if (req.RecordingUrl is not null)  lc.RecordingUrl  = req.RecordingUrl;
+        if (req.Title is not null) lc.Title = req.Title;
+        if (req.Description is not null) lc.Description = req.Description;
+        if (req.ScheduledAt.HasValue) lc.ScheduledAt = req.ScheduledAt.Value;
+        if (req.DurationMinutes.HasValue) lc.DurationMinutes = req.DurationMinutes.Value;
+        if (req.MeetingLink is not null) lc.MeetingLink = req.MeetingLink;
+        if (req.RecordingUrl is not null) lc.RecordingUrl = req.RecordingUrl;
         if (req.Status is not null && Enum.TryParse<LiveClassStatus>(req.Status, out var st)) lc.Status = st;
 
         await db.SaveChangesAsync();
@@ -160,6 +168,112 @@ public class LiveClassesController(LmsDbContext db, IEmailService email) : Contr
         lc.ReminderSent = true;
         await db.SaveChangesAsync();
         return Ok(new { sent = lc.Attendees.Count });
+    }
+
+
+    // ─── Get attendees ────────────────────────────────────────
+    [HttpGet("{id}/attendees")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> GetAttendees(int id)
+    {
+        var attendees = await db.LiveClassAttendees
+            .Include(a => a.User)
+            .Where(a => a.LiveClassId == id)
+            .Select(a => new {
+                a.UserId,
+                a.User.FirstName,
+                a.User.LastName,
+                a.User.Email,
+                a.User.AvatarUrl,
+            })
+            .ToListAsync();
+        return Ok(attendees);
+    }
+
+    // ─── Add student to batch ────────────────────────────────
+    [HttpPost("{id}/attendees")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> AddAttendee(int id, [FromBody] AddAttendeeRequest req)
+    {
+        var lc = await db.LiveClasses.Include(l => l.Course).FirstOrDefaultAsync(l => l.Id == id);
+        if (lc is null) return NotFound();
+
+        var user = await db.Users.FindAsync(req.UserId);
+        if (user is null) return NotFound(new { message = "User not found" });
+
+        var exists = await db.LiveClassAttendees.AnyAsync(a => a.LiveClassId == id && a.UserId == req.UserId);
+        if (!exists)
+        {
+            db.LiveClassAttendees.Add(new LiveClassAttendee { LiveClassId = id, UserId = req.UserId });
+            await db.SaveChangesAsync();
+        }
+
+        // Send email notification to the newly added student
+        _ = email.SendLiveClassNotificationAsync(
+            user.Email, user.FirstName,
+            lc.Title, lc.ScheduledAt, lc.DurationMinutes,
+            lc.Platform.ToString(), lc.MeetingLink ?? "", lc.MeetingId ?? "",
+            lc.MeetingPassword ?? "", lc.Course.Title
+        );
+
+        return Ok(new { message = "Student added and notified" });
+    }
+
+    // ─── Remove student from batch ────────────────────────────
+    [HttpDelete("{id}/attendees/{userId}")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> RemoveAttendee(int id, int userId)
+    {
+        var att = await db.LiveClassAttendees
+            .FirstOrDefaultAsync(a => a.LiveClassId == id && a.UserId == userId);
+        if (att is null) return NotFound();
+        db.LiveClassAttendees.Remove(att);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    // ─── Add resource/file to batch ──────────────────────────
+    [HttpPost("{id}/resources")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> AddResource(int id, [FromBody] AddBatchResourceRequest req)
+    {
+        var lc = await db.LiveClasses.FindAsync(id);
+        if (lc is null) return NotFound();
+
+        var resource = new BatchResource
+        {
+            LiveClassId = id,
+            Title = req.Title,
+            FileUrl = req.FileUrl,
+            FileType = req.FileType,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.BatchResources.Add(resource);
+        await db.SaveChangesAsync();
+        return Ok(resource);
+    }
+
+    // ─── Get resources for a batch ──────────────────────────
+    [HttpGet("{id}/resources")]
+    public async Task<IActionResult> GetResources(int id)
+    {
+        var resources = await db.BatchResources
+            .Where(r => r.LiveClassId == id)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync();
+        return Ok(resources);
+    }
+
+    // ─── Delete resource ─────────────────────────────────────
+    [HttpDelete("{id}/resources/{resourceId}")]
+    [Authorize(Roles = "SuperAdmin,OrgAdmin,Instructor")]
+    public async Task<IActionResult> DeleteResource(int id, int resourceId)
+    {
+        var r = await db.BatchResources.FindAsync(resourceId);
+        if (r is null || r.LiveClassId != id) return NotFound();
+        db.BatchResources.Remove(r);
+        await db.SaveChangesAsync();
+        return NoContent();
     }
 
     static LiveClassDto MapClass(LiveClass l) => new(

@@ -20,46 +20,27 @@ public class PortalController(LmsDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(url))
             return BadRequest(new { message = "url parameter is required" });
 
-        // ── Local dev bypass ─────────────────────────────────────────────────
-        // If running on localhost (any port), skip URL matching and return the
-        // first active organization so developers don't need to update PortalUrl.
-        var host = url.TrimEnd('/').ToLowerInvariant();
-        var isLocalhost = host.StartsWith("http://localhost") ||
-                          host.StartsWith("http://127.0.0.1") ||
-                          host.StartsWith("https://localhost") ||
-                          host.StartsWith("https://127.0.0.1");
-
-        if (isLocalhost)
-        {
-            var devOrg = await db.Organizations
-                .Where(o => o.IsActive)
-                .Select(o => new OrgThemeDto(
-                    o.Id, o.Name, o.Slug, o.LogoUrl, o.BannerUrl, o.Tagline,
-                    o.PrimaryColor, o.SecondaryColor, o.AccentColor,
-                    o.ThemeFont, o.Website, o.PortalUrl))
-                .FirstOrDefaultAsync();
-
-            if (devOrg is null)
-                return NotFound(new { authorized = false, message = "No active organization found." });
-
-            return Ok(new { authorized = true, organization = devOrg });
-        }
-
-        // ── Production: match URL against PortalUrl in DB ────────────────────
-        var normalised = host;
+        // Strict match — normalize only trailing slash and casing.
+        // Port MUST match exactly. No localhost bypass.
+        // Whatever is stored in PortalUrl in the DB must exactly match
+        // what the browser sends (protocol + host + port).
+        // e.g. DB has "http://localhost:5173" → only that URL is allowed.
+        //      DB has "https://scolared.com"  → only that URL is allowed.
+        var incoming = url.TrimEnd('/').ToLowerInvariant();
 
         var org = await db.Organizations
             .Where(o => o.IsActive &&
                         o.PortalUrl != null &&
-                        o.PortalUrl.ToLower().TrimEnd('/') == normalised)
-            .Select(o => new OrgThemeDto(
-                o.Id, o.Name, o.Slug, o.LogoUrl, o.BannerUrl, o.Tagline,
-                o.PrimaryColor, o.SecondaryColor, o.AccentColor,
-                o.ThemeFont, o.Website, o.PortalUrl))
+                        o.PortalUrl.ToLower().TrimEnd('/') == incoming)
             .FirstOrDefaultAsync();
 
         if (org is null)
-            return NotFound(new { authorized = false, message = "No organization is registered for this URL." });
+            return NotFound(new
+            {
+                authorized = false,
+                message = $"Access denied. '{incoming}' is not registered as a portal URL. " +
+                          "Set the exact URL (including port if any) in Org Settings → Portal URL."
+            });
 
         return Ok(new { authorized = true, organization = org });
     }
@@ -107,7 +88,7 @@ public class PortalController(LmsDbContext db) : ControllerBase
             .Where(c => c.OrganizationId == orgId && c.Status == CourseStatus.Published)
             .AsQueryable();
 
-        if (categoryId.HasValue) q = q.Where(c => c.CategoryId == categoryId || c.Category.ParentId == categoryId);
+        if (categoryId.HasValue) q = q.Where(c => c.CategoryId == categoryId || (c.Category != null && c.Category.ParentId == categoryId));
         if (!string.IsNullOrEmpty(level) && Enum.TryParse<CourseLevel>(level, out var lv)) q = q.Where(c => c.Level == lv);
         if (!string.IsNullOrEmpty(search)) q = q.Where(c => c.Title.Contains(search) || (c.Description != null && c.Description.Contains(search)));
         if (free.HasValue) q = q.Where(c => c.IsFree == free.Value);
@@ -188,11 +169,43 @@ public class PortalController(LmsDbContext db) : ControllerBase
                 u.FirstName,
                 u.LastName,
                 u.AvatarUrl,
-                CourseCount = db.Courses.Count(c => c.InstructorId == u.Id && c.Status == CourseStatus.Published)
+                u.Bio,
+                CourseCount = db.Courses.Count(c => c.InstructorId == u.Id && c.Status == CourseStatus.Published),
+                StudentCount = db.Enrollments.Count(e => e.Course.InstructorId == u.Id),
             })
             .ToListAsync();
 
         return Ok(instructors);
+    }
+
+    // ── Public reviews — top-rated, with a written review, across the org's
+    // published courses. Used for the homepage testimonials section so the
+    // copy shown there is always real student feedback, never fabricated.
+    [HttpGet("{orgId:int}/reviews")]
+    public async Task<IActionResult> GetReviews(int orgId, [FromQuery] int limit = 9)
+    {
+        var reviews = await db.CourseRatings
+            .Include(r => r.User)
+            .Include(r => r.Course)
+            .Where(r => r.Course.OrganizationId == orgId
+                && r.Course.Status == CourseStatus.Published
+                && r.Rating >= 4
+                && r.Review != null && r.Review != "")
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(limit)
+            .Select(r => new
+            {
+                r.Id,
+                r.Rating,
+                r.Review,
+                r.CreatedAt,
+                StudentName = r.User.FirstName + " " + r.User.LastName,
+                StudentAvatar = r.User.AvatarUrl,
+                CourseTitle = r.Course.Title,
+            })
+            .ToListAsync();
+
+        return Ok(reviews);
     }
 
     // ─── Mappers ───────────────────────────────────────────────────────
@@ -201,9 +214,14 @@ public class PortalController(LmsDbContext db) : ControllerBase
         c.Level.ToString(), c.Price, c.IsFree,
         c.DurationMinutes, c.Language,
         c.InstructorId,
-        $"{c.Instructor.FirstName} {c.Instructor.LastName}",
-        c.Instructor.AvatarUrl,
-        c.CategoryId, c.Category.Name,
+        // Courses can exist with no instructor/category assigned (made
+        // nullable so creating a course doesn't require picking either) —
+        // c.Instructor/c.Category will be null in that case, so accessing
+        // .FirstName/.Name directly threw a NullReferenceException for
+        // every such course, taking down the whole public courses list.
+        c.Instructor is not null ? $"{c.Instructor.FirstName} {c.Instructor.LastName}" : null,
+        c.Instructor?.AvatarUrl,
+        c.CategoryId, c.Category?.Name,
         c.Enrollments.Count,
         c.Ratings.Count > 0 ? c.Ratings.Average(r => r.Rating) : 0,
         c.Ratings.Count,
@@ -215,9 +233,9 @@ public class PortalController(LmsDbContext db) : ControllerBase
         c.Level.ToString(), c.Price, c.IsFree,
         c.DurationMinutes, c.Language,
         c.InstructorId,
-        $"{c.Instructor.FirstName} {c.Instructor.LastName}",
-        c.Instructor.AvatarUrl,
-        c.CategoryId, c.Category.Name,
+        c.Instructor is not null ? $"{c.Instructor.FirstName} {c.Instructor.LastName}" : null,
+        c.Instructor?.AvatarUrl,
+        c.CategoryId, c.Category?.Name,
         c.Enrollments.Count,
         c.Ratings.Count > 0 ? c.Ratings.Average(r => r.Rating) : 0,
         c.Ratings.Count,
@@ -225,7 +243,13 @@ public class PortalController(LmsDbContext db) : ControllerBase
         c.Modules.OrderBy(m => m.DisplayOrder).Select(m => new PublicModuleDto(
             m.Id, m.Title, m.Description,
             m.Lessons.OrderBy(l => l.DisplayOrder).Select(l => new PublicLessonDto(
-                l.Id, l.Title, l.Type.ToString(), l.DurationSecs, l.IsPreview
+                l.Id, l.Title, l.Type.ToString(), l.DurationSecs, l.IsPreview,
+                // Only ever send real content for lessons explicitly marked
+                // as free preview — anything else stays metadata-only so a
+                // non-enrolled visitor can never pull paid lesson content
+                // through this public endpoint.
+                l.IsPreview ? l.VideoUrl : null,
+                l.IsPreview ? l.Content : null
             )).ToList()
         )).ToList()
     );
@@ -247,12 +271,12 @@ public record PublicCategoryDto(
 public record PublicCourseDto(
     int Id, string Title, string? Description, string? ThumbnailUrl,
     string Level, decimal Price, bool IsFree, int DurationMinutes, string? Language,
-    int InstructorId, string InstructorName, string? InstructorAvatar,
-    int CategoryId, string CategoryName,
+    int? InstructorId, string? InstructorName, string? InstructorAvatar,
+    int? CategoryId, string? CategoryName,
     int EnrollmentCount, double AverageRating, int RatingCount,
     string? Tags, DateTime CreatedAt,
     List<PublicModuleDto>? Modules
 );
 
 public record PublicModuleDto(int Id, string Title, string? Description, List<PublicLessonDto> Lessons);
-public record PublicLessonDto(int Id, string Title, string Type, int DurationSecs, bool IsPreview);
+public record PublicLessonDto(int Id, string Title, string Type, int DurationSecs, bool IsPreview, string? VideoUrl = null, string? Content = null);

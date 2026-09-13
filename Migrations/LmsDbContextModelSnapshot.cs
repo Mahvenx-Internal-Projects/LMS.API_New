@@ -22,28 +22,16 @@ namespace LMS.API.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
-            modelBuilder.Entity("AnswerSelectedOptions", b =>
-                {
-                    b.Property<int>("AnswerId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SelectedOptionsId")
-                        .HasColumnType("int");
-
-                    b.HasKey("AnswerId", "SelectedOptionsId");
-
-                    b.HasIndex("SelectedOptionsId");
-
-                    b.ToTable("AnswerSelectedOptions");
-                });
-
-            modelBuilder.Entity("LMS.API.Models.Answer", b =>
+            modelBuilder.Entity("Answer", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttemptId")
+                        .HasColumnType("int");
 
                     b.Property<int>("ExamAttemptId")
                         .HasColumnType("int");
@@ -57,19 +45,22 @@ namespace LMS.API.Migrations
                     b.Property<int>("QuestionId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("SelectedOptionId")
+                        .HasColumnType("int");
+
                     b.Property<string>("TextAnswer")
                         .HasColumnType("longtext");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ExamAttemptId");
+                    b.HasIndex("AttemptId");
 
                     b.HasIndex("QuestionId");
 
                     b.ToTable("Answers");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Assignment", b =>
+            modelBuilder.Entity("Assignment", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -98,9 +89,8 @@ namespace LMS.API.Migrations
                     b.Property<int>("MaxMarks")
                         .HasColumnType("int");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -116,7 +106,7 @@ namespace LMS.API.Migrations
                     b.ToTable("Assignments");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.AssignmentSubmission", b =>
+            modelBuilder.Entity("AssignmentSubmission", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -142,9 +132,8 @@ namespace LMS.API.Migrations
                     b.Property<int?>("MarksObtained")
                         .HasColumnType("int");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<int>("StudentId")
                         .HasColumnType("int");
@@ -152,7 +141,7 @@ namespace LMS.API.Migrations
                     b.Property<string>("SubmissionText")
                         .HasColumnType("longtext");
 
-                    b.Property<DateTime?>("SubmittedAt")
+                    b.Property<DateTime>("SubmittedAt")
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
@@ -166,7 +155,7 @@ namespace LMS.API.Migrations
                     b.ToTable("AssignmentSubmissions");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Attendance", b =>
+            modelBuilder.Entity("Attendance", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -189,9 +178,8 @@ namespace LMS.API.Migrations
                     b.Property<string>("Remarks")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<int>("StudentId")
                         .HasColumnType("int");
@@ -202,12 +190,247 @@ namespace LMS.API.Migrations
 
                     b.HasIndex("StudentId");
 
-                    b.HasIndex("CourseId", "StudentId", "Date");
+                    b.HasIndex("CourseId", "StudentId", "Date")
+                        .IsUnique();
 
                     b.ToTable("Attendances");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Cart", b =>
+            modelBuilder.Entity("BatchEnquiry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BatchId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CourseInterest")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.ToTable("BatchEnquiries");
+                });
+
+            modelBuilder.Entity("BatchResource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("FileType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("FileUrl")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("LiveClassId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LiveClassId");
+
+                    b.ToTable("BatchResources");
+                });
+
+            modelBuilder.Entity("BatchStudent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BatchId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GuestEmail")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("GuestMobile")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("GuestName")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("longtext");
+
+                    b.Property<decimal>("PaidAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("PaymentStatus")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TotalFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("BatchStudents");
+                });
+
+            modelBuilder.Entity("BenchResource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AadhaarKey")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AadhaarNumber")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AadhaarUrl")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("CandidateType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal?>("CurrentCTC")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("CurrentLocation")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Domain")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<decimal?>("ExpectedCTC")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<double>("ExperienceYears")
+                        .HasColumnType("double");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OtherDocumentsJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PanCardKey")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PanCardNumber")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PanCardUrl")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PreferredLocation")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PreparedLocation")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ProfilePhotoKey")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ProfilePhotoUrl")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ResumeFileName")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ResumeKey")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ResumeUrl")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("SkillSet")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.ToTable("BenchResources");
+                });
+
+            modelBuilder.Entity("Cart", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -234,7 +457,7 @@ namespace LMS.API.Migrations
                     b.ToTable("Carts");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Category", b =>
+            modelBuilder.Entity("Category", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -282,7 +505,7 @@ namespace LMS.API.Migrations
                     b.ToTable("Categories");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Certificate", b =>
+            modelBuilder.Entity("Certificate", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -292,7 +515,8 @@ namespace LMS.API.Migrations
 
                     b.Property<string>("CertificateNumber")
                         .IsRequired()
-                        .HasColumnType("varchar(255)");
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("CourseId")
                         .HasColumnType("int");
@@ -308,6 +532,9 @@ namespace LMS.API.Migrations
 
                     b.Property<DateTime>("IssuedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
 
                     b.Property<string>("PdfUrl")
                         .HasColumnType("longtext");
@@ -325,15 +552,16 @@ namespace LMS.API.Migrations
 
                     b.HasIndex("CourseId");
 
-                    b.HasIndex("ExamAttemptId")
-                        .IsUnique();
+                    b.HasIndex("ExamAttemptId");
+
+                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("UserId");
 
                     b.ToTable("Certificates");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Course", b =>
+            modelBuilder.Entity("CodingQuestion", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -341,7 +569,54 @@ namespace LMS.API.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CategoryId")
+                    b.Property<string>("Constraints")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("MockTestQuestionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProblemStatement")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("SampleInput")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("SampleOutput")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("StarterCodeCpp")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("StarterCodeJava")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("StarterCodeJs")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("StarterCodePython")
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MockTestQuestionId")
+                        .IsUnique();
+
+                    b.ToTable("CodingQuestions");
+                });
+
+            modelBuilder.Entity("Course", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<float>("AverageRating")
+                        .HasColumnType("float");
+
+                    b.Property<int?>("CategoryId")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAt")
@@ -353,32 +628,36 @@ namespace LMS.API.Migrations
                     b.Property<int>("DurationMinutes")
                         .HasColumnType("int");
 
-                    b.Property<int>("InstructorId")
+                    b.Property<bool>("EnforceSequentialLessons")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("EnrollmentCount")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("InstructorId")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsFree")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Language")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Level")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Level")
+                        .HasColumnType("int");
 
                     b.Property<int>("OrganizationId")
                         .HasColumnType("int");
 
                     b.Property<decimal>("Price")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
-                    b.Property<string>("Requirements")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<string>("Tags")
                         .HasColumnType("longtext");
@@ -388,17 +667,11 @@ namespace LMS.API.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("TrailerUrl")
-                        .HasColumnType("longtext");
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<string>("WhatYouLearn")
-                        .HasColumnType("longtext");
 
                     b.HasKey("Id");
 
@@ -411,7 +684,7 @@ namespace LMS.API.Migrations
                     b.ToTable("Courses");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.CourseRating", b =>
+            modelBuilder.Entity("CourseRating", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -444,7 +717,7 @@ namespace LMS.API.Migrations
                     b.ToTable("CourseRatings");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Department", b =>
+            modelBuilder.Entity("Department", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -485,7 +758,7 @@ namespace LMS.API.Migrations
                     b.ToTable("Departments");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Enrollment", b =>
+            modelBuilder.Entity("Enrollment", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -505,9 +778,8 @@ namespace LMS.API.Migrations
                     b.Property<int>("ProgressPercent")
                         .HasColumnType("int");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<int>("TotalWatchSeconds")
                         .HasColumnType("int");
@@ -519,13 +791,12 @@ namespace LMS.API.Migrations
 
                     b.HasIndex("CourseId");
 
-                    b.HasIndex("UserId", "CourseId")
-                        .IsUnique();
+                    b.HasIndex("UserId");
 
                     b.ToTable("Enrollments");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Exam", b =>
+            modelBuilder.Entity("Exam", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -538,6 +809,12 @@ namespace LMS.API.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
 
                     b.Property<string>("Instructions")
                         .HasColumnType("longtext");
@@ -569,13 +846,16 @@ namespace LMS.API.Migrations
                     b.ToTable("Exams");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.ExamAttempt", b =>
+            modelBuilder.Entity("ExamAttempt", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AnswersJson")
+                        .HasColumnType("longtext");
 
                     b.Property<int>("ExamId")
                         .HasColumnType("int");
@@ -586,20 +866,22 @@ namespace LMS.API.Migrations
                     b.Property<bool>("Passed")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<float>("Percentage")
+                        .HasColumnType("float");
+
                     b.Property<int?>("Score")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("SubmittedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<int?>("TotalMarks")
+                    b.Property<int>("TotalMarks")
                         .HasColumnType("int");
 
                     b.Property<int>("UserId")
@@ -614,7 +896,64 @@ namespace LMS.API.Migrations
                     b.ToTable("ExamAttempts");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.HomePageConfig", b =>
+            modelBuilder.Entity("ExamQuestion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CorrectOptionIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Discriminator")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("varchar(13)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ExamId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Explanation")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Marks")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OptionsJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<string>("QuestionText")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExamId");
+
+                    b.ToTable("ExamQuestion");
+
+                    b.HasDiscriminator<string>("Discriminator").HasValue("ExamQuestion");
+
+                    b.UseTphMappingStrategy();
+                });
+
+            modelBuilder.Entity("HomePageConfig", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -694,13 +1033,12 @@ namespace LMS.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrganizationId")
-                        .IsUnique();
+                    b.HasIndex("OrganizationId");
 
                     b.ToTable("HomePageConfigs");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.InterviewSchedule", b =>
+            modelBuilder.Entity("InterviewSchedule", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -747,9 +1085,8 @@ namespace LMS.API.Migrations
                     b.Property<DateTime>("ScheduledAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<int>("StudentId")
                         .HasColumnType("int");
@@ -770,7 +1107,62 @@ namespace LMS.API.Migrations
                     b.ToTable("InterviewSchedules");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Lesson", b =>
+            modelBuilder.Entity("LangMaster", b =>
+                {
+                    b.Property<int>("LangID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("LangID"));
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LangCode")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("LangName")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("LangID");
+
+                    b.ToTable("LangMasters");
+                });
+
+            modelBuilder.Entity("LangTrans", b =>
+                {
+                    b.Property<int>("ATS")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("ATS"));
+
+                    b.Property<int>("LangID")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TransKey")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("TransVal")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("ATS");
+
+                    b.HasIndex("LangID");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.ToTable("LangTrans");
+                });
+
+            modelBuilder.Entity("Lesson", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -796,6 +1188,9 @@ namespace LMS.API.Migrations
                     b.Property<string>("FileUrl")
                         .HasColumnType("longtext");
 
+                    b.Property<bool>("IsFree")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("IsPreview")
                         .HasColumnType("tinyint(1)");
 
@@ -805,14 +1200,22 @@ namespace LMS.API.Migrations
                     b.Property<int>("ModuleId")
                         .HasColumnType("int");
 
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ParentLessonId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RequireExamToProgress")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
 
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
 
                     b.Property<string>("VideoUrl")
                         .HasColumnType("longtext");
@@ -821,10 +1224,131 @@ namespace LMS.API.Migrations
 
                     b.HasIndex("ModuleId");
 
+                    b.HasIndex("ParentLessonId");
+
                     b.ToTable("Lessons");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LessonProgress", b =>
+            modelBuilder.Entity("LessonExam", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("LessonId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PassPercent")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonId")
+                        .IsUnique();
+
+                    b.ToTable("LessonExams");
+                });
+
+            modelBuilder.Entity("LessonExamAttempt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AnswersJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("AttemptedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("LessonExamId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Passed")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonExamId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("LessonExamAttempts");
+                });
+
+            modelBuilder.Entity("LessonExamQuestion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CorrectOption")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Explanation")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("LessonExamId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OptionA")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("OptionB")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("OptionC")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("OptionD")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("QuestionText")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("QuestionType")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonExamId");
+
+                    b.ToTable("LessonExamQuestions");
+                });
+
+            modelBuilder.Entity("LessonProgress", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -837,6 +1361,9 @@ namespace LMS.API.Migrations
 
                     b.Property<int>("LastPositionSec")
                         .HasColumnType("int");
+
+                    b.Property<DateTime>("LastWatchedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int>("LessonId")
                         .HasColumnType("int");
@@ -860,7 +1387,7 @@ namespace LMS.API.Migrations
                     b.ToTable("LessonProgresses");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LessonResource", b =>
+            modelBuilder.Entity("LessonResource", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -889,12 +1416,8 @@ namespace LMS.API.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime>("UploadedAt")
-                        .HasColumnType("datetime(6)");
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -903,7 +1426,7 @@ namespace LMS.API.Migrations
                     b.ToTable("LessonResources");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LiveClass", b =>
+            modelBuilder.Entity("LiveClass", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -938,9 +1461,8 @@ namespace LMS.API.Migrations
                     b.Property<string>("MeetingPassword")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Platform")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Platform")
+                        .HasColumnType("int");
 
                     b.Property<string>("RecordingUrl")
                         .HasColumnType("longtext");
@@ -951,9 +1473,8 @@ namespace LMS.API.Migrations
                     b.Property<DateTime>("ScheduledAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -969,19 +1490,13 @@ namespace LMS.API.Migrations
                     b.ToTable("LiveClasses");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LiveClassAttendee", b =>
+            modelBuilder.Entity("LiveClassAttendee", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("Attended")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<DateTime?>("JoinedAt")
-                        .HasColumnType("datetime(6)");
 
                     b.Property<int>("LiveClassId")
                         .HasColumnType("int");
@@ -999,7 +1514,7 @@ namespace LMS.API.Migrations
                     b.ToTable("LiveClassAttendees");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTest", b =>
+            modelBuilder.Entity("MockTest", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1019,9 +1534,11 @@ namespace LMS.API.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Difficulty")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Difficulty")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("LessonId")
+                        .HasColumnType("int");
 
                     b.Property<int>("MaxAttempts")
                         .HasColumnType("int");
@@ -1038,9 +1555,8 @@ namespace LMS.API.Migrations
                     b.Property<bool>("ShowResultImmediately")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<string>("Tags")
                         .HasColumnType("longtext");
@@ -1065,12 +1581,14 @@ namespace LMS.API.Migrations
 
                     b.HasIndex("CreatedById");
 
+                    b.HasIndex("LessonId");
+
                     b.HasIndex("OrganizationId");
 
                     b.ToTable("MockTests");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestAnswer", b =>
+            modelBuilder.Entity("MockTestAnswer", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1102,9 +1620,6 @@ namespace LMS.API.Migrations
                     b.Property<string>("TextAnswer")
                         .HasColumnType("longtext");
 
-                    b.Property<int>("TimeTakenSecs")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
 
                     b.HasIndex("AttemptId");
@@ -1116,13 +1631,16 @@ namespace LMS.API.Migrations
                     b.ToTable("MockTestAnswers");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestAttempt", b =>
+            modelBuilder.Entity("MockTestAttempt", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AnswersJson")
+                        .HasColumnType("longtext");
 
                     b.Property<int>("AttemptNumber")
                         .HasColumnType("int");
@@ -1155,9 +1673,8 @@ namespace LMS.API.Migrations
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<int>("StudentId")
                         .HasColumnType("int");
@@ -1168,16 +1685,19 @@ namespace LMS.API.Migrations
                     b.Property<int>("TotalMarks")
                         .HasColumnType("int");
 
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MockTestId");
 
-                    b.HasIndex("StudentId");
+                    b.HasIndex("UserId");
 
                     b.ToTable("MockTestAttempts");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestOption", b =>
+            modelBuilder.Entity("MockTestOption", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1208,7 +1728,7 @@ namespace LMS.API.Migrations
                     b.ToTable("MockTestOptions");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestQuestion", b =>
+            modelBuilder.Entity("MockTestQuestion", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1216,9 +1736,8 @@ namespace LMS.API.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Difficulty")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Difficulty")
+                        .HasColumnType("int");
 
                     b.Property<int>("DisplayOrder")
                         .HasColumnType("int");
@@ -1235,6 +1754,12 @@ namespace LMS.API.Migrations
                     b.Property<string>("ImageUrl")
                         .HasColumnType("longtext");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("LessonId")
+                        .HasColumnType("int");
+
                     b.Property<int>("Marks")
                         .HasColumnType("int");
 
@@ -1244,9 +1769,8 @@ namespace LMS.API.Migrations
                     b.Property<int>("NegativeMarks")
                         .HasColumnType("int");
 
-                    b.Property<string>("QuestionType")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("QuestionType")
+                        .HasColumnType("int");
 
                     b.Property<string>("Text")
                         .IsRequired()
@@ -1258,12 +1782,14 @@ namespace LMS.API.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("LessonId");
+
                     b.HasIndex("MockTestId");
 
                     b.ToTable("MockTestQuestions");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Module", b =>
+            modelBuilder.Entity("Module", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1283,6 +1809,9 @@ namespace LMS.API.Migrations
                     b.Property<bool>("IsPreview")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1295,7 +1824,46 @@ namespace LMS.API.Migrations
                     b.ToTable("Modules");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Order", b =>
+            modelBuilder.Entity("Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LinkUrl")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("Order", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1326,13 +1894,12 @@ namespace LMS.API.Migrations
                     b.Property<string>("RazorpaySignature")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<decimal>("TotalAmount")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("UserId")
                         .HasColumnType("int");
@@ -1344,7 +1911,7 @@ namespace LMS.API.Migrations
                     b.ToTable("Orders");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.OrderItem", b =>
+            modelBuilder.Entity("OrderItem", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1359,8 +1926,8 @@ namespace LMS.API.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("Price")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
 
@@ -1371,13 +1938,43 @@ namespace LMS.API.Migrations
                     b.ToTable("OrderItems");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Organization", b =>
+            modelBuilder.Entity("OrgLangSetting", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("LangID")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.ToTable("OrgLangSettings");
+                });
+
+            modelBuilder.Entity("Organization", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AboutUsContent")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AboutUsTemplate")
+                        .HasColumnType("longtext");
 
                     b.Property<string>("AccentColor")
                         .HasColumnType("longtext");
@@ -1391,13 +1988,32 @@ namespace LMS.API.Migrations
                     b.Property<string>("BannerUrl")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("ContactAddress")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ContactEmail")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ContactMapEmbed")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ContactUsContent")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ContactUsTemplate")
+                        .HasColumnType("longtext");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Currency")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("longtext")
-                        .HasDefaultValue("INR");
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("CustomMenuJson")
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
@@ -1407,8 +2023,11 @@ namespace LMS.API.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("OpeningsContent")
+                        .HasColumnType("longtext");
 
                     b.Property<string>("PortalUrl")
                         .HasColumnType("longtext");
@@ -1419,27 +2038,48 @@ namespace LMS.API.Migrations
                     b.Property<string>("RazorpayKeyId")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("RazorpayKeySecret")
+                    b.Property<string>("ReferralOfferText")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ScrollingBannerText")
                         .HasColumnType("longtext");
 
                     b.Property<string>("SecondaryColor")
                         .HasColumnType("longtext");
+
+                    b.Property<bool>("ShowAboutUs")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("ShowAllCourses")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("ShowContactUs")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("ShowCourseBatches")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("ShowOpenings")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("ShowReferralOffer")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("ShowScrollingBanner")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("SignatureUrl")
                         .HasColumnType("longtext");
 
                     b.Property<string>("Slug")
                         .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Tagline")
                         .HasColumnType("longtext");
 
                     b.Property<string>("ThemeFont")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ThemeMode")
                         .HasColumnType("longtext");
 
                     b.Property<string>("Website")
@@ -1453,7 +2093,7 @@ namespace LMS.API.Migrations
                     b.ToTable("Organizations");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.PaymentTransaction", b =>
+            modelBuilder.Entity("PaymentTransaction", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1462,8 +2102,8 @@ namespace LMS.API.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<decimal>("Amount")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime(6)");
@@ -1481,9 +2121,8 @@ namespace LMS.API.Migrations
                     b.Property<string>("IpAddress")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Method")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Method")
+                        .HasColumnType("int");
 
                     b.Property<string>("MethodDetail")
                         .HasColumnType("longtext");
@@ -1501,8 +2140,8 @@ namespace LMS.API.Migrations
                         .HasColumnType("longtext");
 
                     b.Property<decimal?>("RefundAmount")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("RefundId")
                         .HasColumnType("longtext");
@@ -1510,9 +2149,8 @@ namespace LMS.API.Migrations
                     b.Property<DateTime?>("RefundedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<string>("TransactionRef")
                         .IsRequired()
@@ -1524,9 +2162,6 @@ namespace LMS.API.Migrations
                     b.Property<int>("UserId")
                         .HasColumnType("int");
 
-                    b.Property<string>("WebhookPayload")
-                        .HasColumnType("longtext");
-
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId");
@@ -1536,7 +2171,7 @@ namespace LMS.API.Migrations
                     b.ToTable("PaymentTransactions");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Question", b =>
+            modelBuilder.Entity("PayrollRecord", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1544,34 +2179,140 @@ namespace LMS.API.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("DisplayOrder")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ExamId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Explanation")
+                    b.Property<string>("AadharCard")
                         .HasColumnType("longtext");
 
-                    b.Property<int>("Marks")
-                        .HasColumnType("int");
+                    b.Property<string>("AccountHolderName")
+                        .HasColumnType("longtext");
 
-                    b.Property<string>("Text")
+                    b.Property<string>("AccountNumber")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AdditionalDocuments")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Address")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("BankBranch")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("BankName")
+                        .HasColumnType("longtext");
+
+                    b.Property<decimal?>("BasicSalary")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<decimal>("CTC")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<decimal?>("ConveyanceAllowance")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Department")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Designation")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Domain")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Type")
+                    b.Property<string>("FullName")
                         .IsRequired()
                         .HasColumnType("longtext");
+
+                    b.Property<decimal?>("GSTAmount")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<int>("GSTApplicable")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("GrossSalary")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<decimal?>("HRA")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("IFSCCode")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("JoiningDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal?>("NetSalary")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("OtherDeductions")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("PANCard")
+                        .HasColumnType("longtext");
+
+                    b.Property<decimal?>("PFEmployee")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<decimal?>("PFEmployer")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("PFNumber")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("PFRequired")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PaymentDay")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PayrollFromDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("PayrollToDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<decimal?>("ProfessionTax")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<decimal?>("SpecialAllowance")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("TDS")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<decimal?>("TotalDeductions")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ExamId");
+                    b.HasIndex("OrganizationId");
 
-                    b.ToTable("Questions");
+                    b.ToTable("PayrollRecords");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.QuestionOption", b =>
+            modelBuilder.Entity("QuestionOption", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1599,7 +2340,39 @@ namespace LMS.API.Migrations
                     b.ToTable("QuestionOptions");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.TopicScore", b =>
+            modelBuilder.Entity("TestCase", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CodingQuestionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExpectedOutput")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Input")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodingQuestionId");
+
+                    b.ToTable("TestCases");
+                });
+
+            modelBuilder.Entity("TopicScore", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1630,7 +2403,67 @@ namespace LMS.API.Migrations
                     b.ToTable("TopicScores");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.User", b =>
+            modelBuilder.Entity("TrainingBatch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BatchName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<int?>("CourseId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("DurationDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("LessonId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TotalFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CourseId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("LessonId");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.ToTable("TrainingBatches");
+                });
+
+            modelBuilder.Entity("User", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1649,13 +2482,13 @@ namespace LMS.API.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
@@ -1665,8 +2498,8 @@ namespace LMS.API.Migrations
 
                     b.Property<string>("LastName")
                         .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("OrganizationId")
                         .HasColumnType("int");
@@ -1675,12 +2508,29 @@ namespace LMS.API.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<string>("PasswordResetOtp")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("PasswordResetOtpExpires")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PasswordResetToken")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("PasswordResetTokenExpires")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Role")
-                        .IsRequired()
+                    b.Property<string>("RefreshToken")
                         .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("RefreshTokenExpiry")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -1692,22 +2542,34 @@ namespace LMS.API.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.UserDepartment", b =>
+            modelBuilder.Entity("UserDepartment", b =>
                 {
-                    b.Property<int>("UserId")
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
-                    b.HasKey("UserId", "DepartmentId");
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
 
                     b.HasIndex("DepartmentId");
+
+                    b.HasIndex("UserId", "DepartmentId")
+                        .IsUnique();
 
                     b.ToTable("UserDepartments");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.UserRoleAssignment", b =>
+            modelBuilder.Entity("UserRoleAssignment", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1721,67 +2583,57 @@ namespace LMS.API.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasColumnType("varchar(255)");
+                    b.Property<int>("Role")
+                        .HasColumnType("int");
 
                     b.Property<int>("UserId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "Role")
-                        .IsUnique();
+                    b.HasIndex("UserId");
 
                     b.ToTable("UserRoleAssignments");
                 });
 
-            modelBuilder.Entity("AnswerSelectedOptions", b =>
+            modelBuilder.Entity("Question", b =>
                 {
-                    b.HasOne("LMS.API.Models.Answer", null)
-                        .WithMany()
-                        .HasForeignKey("AnswerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.HasBaseType("ExamQuestion");
 
-                    b.HasOne("LMS.API.Models.QuestionOption", null)
-                        .WithMany()
-                        .HasForeignKey("SelectedOptionsId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.HasDiscriminator().HasValue("Question");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Answer", b =>
+            modelBuilder.Entity("Answer", b =>
                 {
-                    b.HasOne("LMS.API.Models.ExamAttempt", "ExamAttempt")
+                    b.HasOne("ExamAttempt", "Attempt")
                         .WithMany("Answers")
-                        .HasForeignKey("ExamAttemptId")
+                        .HasForeignKey("AttemptId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.Question", "Question")
-                        .WithMany("Answers")
+                    b.HasOne("ExamQuestion", "Question")
+                        .WithMany()
                         .HasForeignKey("QuestionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("ExamAttempt");
+                    b.Navigation("Attempt");
 
                     b.Navigation("Question");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Assignment", b =>
+            modelBuilder.Entity("Assignment", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany()
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "CreatedBy")
+                    b.HasOne("User", "CreatedBy")
                         .WithMany()
                         .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Course");
@@ -1789,20 +2641,20 @@ namespace LMS.API.Migrations
                     b.Navigation("CreatedBy");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.AssignmentSubmission", b =>
+            modelBuilder.Entity("AssignmentSubmission", b =>
                 {
-                    b.HasOne("LMS.API.Models.Assignment", "Assignment")
+                    b.HasOne("Assignment", "Assignment")
                         .WithMany("Submissions")
                         .HasForeignKey("AssignmentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "GradedBy")
+                    b.HasOne("User", "GradedBy")
                         .WithMany()
                         .HasForeignKey("GradedById")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("LMS.API.Models.User", "Student")
+                    b.HasOne("User", "Student")
                         .WithMany()
                         .HasForeignKey("StudentId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1815,22 +2667,23 @@ namespace LMS.API.Migrations
                     b.Navigation("Student");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Attendance", b =>
+            modelBuilder.Entity("Attendance", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany()
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "MarkedBy")
+                    b.HasOne("User", "MarkedBy")
                         .WithMany()
-                        .HasForeignKey("MarkedById");
+                        .HasForeignKey("MarkedById")
+                        .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("LMS.API.Models.User", "Student")
+                    b.HasOne("User", "Student")
                         .WithMany()
                         .HasForeignKey("StudentId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Course");
@@ -1840,16 +2693,65 @@ namespace LMS.API.Migrations
                     b.Navigation("Student");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Cart", b =>
+            modelBuilder.Entity("BatchEnquiry", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
-                        .WithMany("CartItems")
+                    b.HasOne("TrainingBatch", "Batch")
+                        .WithMany()
+                        .HasForeignKey("BatchId");
+
+                    b.Navigation("Batch");
+                });
+
+            modelBuilder.Entity("BatchResource", b =>
+                {
+                    b.HasOne("LiveClass", "LiveClass")
+                        .WithMany()
+                        .HasForeignKey("LiveClassId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LiveClass");
+                });
+
+            modelBuilder.Entity("BatchStudent", b =>
+                {
+                    b.HasOne("TrainingBatch", "Batch")
+                        .WithMany("Students")
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Batch");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("BenchResource", b =>
+                {
+                    b.HasOne("Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Cart", b =>
+                {
+                    b.HasOne("Course", "Course")
+                        .WithMany()
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "User")
-                        .WithMany("CartItems")
+                    b.HasOne("User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1859,20 +2761,19 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Category", b =>
+            modelBuilder.Entity("Category", b =>
                 {
-                    b.HasOne("LMS.API.Models.Department", "Department")
+                    b.HasOne("Department", "Department")
                         .WithMany("Categories")
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("DepartmentId");
 
-                    b.HasOne("LMS.API.Models.Organization", "Organization")
+                    b.HasOne("Organization", "Organization")
                         .WithMany("Categories")
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.Category", "Parent")
+                    b.HasOne("Category", "Parent")
                         .WithMany("Children")
                         .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -1884,20 +2785,27 @@ namespace LMS.API.Migrations
                     b.Navigation("Parent");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Certificate", b =>
+            modelBuilder.Entity("Certificate", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany()
                         .HasForeignKey("CourseId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.ExamAttempt", "ExamAttempt")
-                        .WithOne("Certificate")
-                        .HasForeignKey("LMS.API.Models.Certificate", "ExamAttemptId");
+                    b.HasOne("ExamAttempt", "ExamAttempt")
+                        .WithMany()
+                        .HasForeignKey("ExamAttemptId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("LMS.API.Models.User", "User")
-                        .WithMany("Certificates")
+                    b.HasOne("Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -1906,24 +2814,35 @@ namespace LMS.API.Migrations
 
                     b.Navigation("ExamAttempt");
 
+                    b.Navigation("Organization");
+
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Course", b =>
+            modelBuilder.Entity("CodingQuestion", b =>
                 {
-                    b.HasOne("LMS.API.Models.Category", "Category")
-                        .WithMany("Courses")
-                        .HasForeignKey("CategoryId")
+                    b.HasOne("MockTestQuestion", "MockTestQuestion")
+                        .WithOne("CodingQuestion")
+                        .HasForeignKey("CodingQuestion", "MockTestQuestionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "Instructor")
-                        .WithMany("CoursesOwned")
-                        .HasForeignKey("InstructorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                    b.Navigation("MockTestQuestion");
+                });
 
-                    b.HasOne("LMS.API.Models.Organization", "Organization")
+            modelBuilder.Entity("Course", b =>
+                {
+                    b.HasOne("Category", "Category")
+                        .WithMany("Courses")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("User", "Instructor")
+                        .WithMany()
+                        .HasForeignKey("InstructorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Organization", "Organization")
                         .WithMany("Courses")
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1936,18 +2855,18 @@ namespace LMS.API.Migrations
                     b.Navigation("Organization");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.CourseRating", b =>
+            modelBuilder.Entity("CourseRating", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany("Ratings")
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "User")
+                    b.HasOne("User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Course");
@@ -1955,9 +2874,9 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Department", b =>
+            modelBuilder.Entity("Department", b =>
                 {
-                    b.HasOne("LMS.API.Models.Organization", "Organization")
+                    b.HasOne("Organization", "Organization")
                         .WithMany("Departments")
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1966,18 +2885,18 @@ namespace LMS.API.Migrations
                     b.Navigation("Organization");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Enrollment", b =>
+            modelBuilder.Entity("Enrollment", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany("Enrollments")
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "User")
-                        .WithMany("Enrollments")
+                    b.HasOne("User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Course");
@@ -1985,10 +2904,10 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Exam", b =>
+            modelBuilder.Entity("Exam", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
-                        .WithMany("Exams")
+                    b.HasOne("Course", "Course")
+                        .WithMany()
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1996,16 +2915,16 @@ namespace LMS.API.Migrations
                     b.Navigation("Course");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.ExamAttempt", b =>
+            modelBuilder.Entity("ExamAttempt", b =>
                 {
-                    b.HasOne("LMS.API.Models.Exam", "Exam")
+                    b.HasOne("Exam", "Exam")
                         .WithMany("Attempts")
                         .HasForeignKey("ExamId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "User")
-                        .WithMany("ExamAttempts")
+                    b.HasOne("User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -2015,30 +2934,41 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.HomePageConfig", b =>
+            modelBuilder.Entity("ExamQuestion", b =>
                 {
-                    b.HasOne("LMS.API.Models.Organization", "Organization")
-                        .WithOne("HomePageConfig")
-                        .HasForeignKey("LMS.API.Models.HomePageConfig", "OrganizationId")
+                    b.HasOne("Exam", "Exam")
+                        .WithMany("Questions")
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Exam");
+                });
+
+            modelBuilder.Entity("HomePageConfig", b =>
+                {
+                    b.HasOne("Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Organization");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.InterviewSchedule", b =>
+            modelBuilder.Entity("InterviewSchedule", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany()
                         .HasForeignKey("CourseId");
 
-                    b.HasOne("LMS.API.Models.Organization", "Organization")
+                    b.HasOne("Organization", "Organization")
                         .WithMany()
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "Student")
+                    b.HasOne("User", "Student")
                         .WithMany()
                         .HasForeignKey("StudentId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -2051,26 +2981,93 @@ namespace LMS.API.Migrations
                     b.Navigation("Student");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Lesson", b =>
+            modelBuilder.Entity("LangTrans", b =>
                 {
-                    b.HasOne("LMS.API.Models.Module", "Module")
+                    b.HasOne("LangMaster", "Lang")
+                        .WithMany("Translations")
+                        .HasForeignKey("LangID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Lang");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Lesson", b =>
+                {
+                    b.HasOne("Module", "Module")
                         .WithMany("Lessons")
                         .HasForeignKey("ModuleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Lesson", "ParentLesson")
+                        .WithMany("ChildLessons")
+                        .HasForeignKey("ParentLessonId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Module");
+
+                    b.Navigation("ParentLesson");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LessonProgress", b =>
+            modelBuilder.Entity("LessonExam", b =>
                 {
-                    b.HasOne("LMS.API.Models.Lesson", "Lesson")
+                    b.HasOne("Lesson", "Lesson")
+                        .WithOne("Exam")
+                        .HasForeignKey("LessonExam", "LessonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Lesson");
+                });
+
+            modelBuilder.Entity("LessonExamAttempt", b =>
+                {
+                    b.HasOne("LessonExam", "Exam")
+                        .WithMany("Attempts")
+                        .HasForeignKey("LessonExamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Exam");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("LessonExamQuestion", b =>
+                {
+                    b.HasOne("LessonExam", "Exam")
+                        .WithMany("Questions")
+                        .HasForeignKey("LessonExamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Exam");
+                });
+
+            modelBuilder.Entity("LessonProgress", b =>
+                {
+                    b.HasOne("Lesson", "Lesson")
                         .WithMany("Progresses")
                         .HasForeignKey("LessonId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "User")
+                    b.HasOne("User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2081,9 +3078,9 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LessonResource", b =>
+            modelBuilder.Entity("LessonResource", b =>
                 {
-                    b.HasOne("LMS.API.Models.Lesson", "Lesson")
+                    b.HasOne("Lesson", "Lesson")
                         .WithMany("Resources")
                         .HasForeignKey("LessonId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2092,15 +3089,15 @@ namespace LMS.API.Migrations
                     b.Navigation("Lesson");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LiveClass", b =>
+            modelBuilder.Entity("LiveClass", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany()
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "Host")
+                    b.HasOne("User", "Host")
                         .WithMany()
                         .HasForeignKey("HostId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -2111,15 +3108,15 @@ namespace LMS.API.Migrations
                     b.Navigation("Host");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LiveClassAttendee", b =>
+            modelBuilder.Entity("LiveClassAttendee", b =>
                 {
-                    b.HasOne("LMS.API.Models.LiveClass", "LiveClass")
+                    b.HasOne("LiveClass", "LiveClass")
                         .WithMany("Attendees")
                         .HasForeignKey("LiveClassId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "User")
+                    b.HasOne("User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2130,19 +3127,23 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTest", b =>
+            modelBuilder.Entity("MockTest", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany()
                         .HasForeignKey("CourseId");
 
-                    b.HasOne("LMS.API.Models.User", "CreatedBy")
+                    b.HasOne("User", "CreatedBy")
                         .WithMany()
                         .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.Organization", "Organization")
+                    b.HasOne("Lesson", "Lesson")
+                        .WithMany()
+                        .HasForeignKey("LessonId");
+
+                    b.HasOne("Organization", "Organization")
                         .WithMany()
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2152,26 +3153,29 @@ namespace LMS.API.Migrations
 
                     b.Navigation("CreatedBy");
 
+                    b.Navigation("Lesson");
+
                     b.Navigation("Organization");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestAnswer", b =>
+            modelBuilder.Entity("MockTestAnswer", b =>
                 {
-                    b.HasOne("LMS.API.Models.MockTestAttempt", "Attempt")
+                    b.HasOne("MockTestAttempt", "Attempt")
                         .WithMany("Answers")
                         .HasForeignKey("AttemptId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.MockTestQuestion", "Question")
+                    b.HasOne("MockTestQuestion", "Question")
                         .WithMany()
                         .HasForeignKey("QuestionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.MockTestOption", "SelectedOption")
+                    b.HasOne("MockTestOption", "SelectedOption")
                         .WithMany()
-                        .HasForeignKey("SelectedOptionId");
+                        .HasForeignKey("SelectedOptionId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Attempt");
 
@@ -2180,28 +3184,28 @@ namespace LMS.API.Migrations
                     b.Navigation("SelectedOption");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestAttempt", b =>
+            modelBuilder.Entity("MockTestAttempt", b =>
                 {
-                    b.HasOne("LMS.API.Models.MockTest", "MockTest")
+                    b.HasOne("MockTest", "MockTest")
                         .WithMany("Attempts")
                         .HasForeignKey("MockTestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "Student")
+                    b.HasOne("User", "User")
                         .WithMany()
-                        .HasForeignKey("StudentId")
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("MockTest");
 
-                    b.Navigation("Student");
+                    b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestOption", b =>
+            modelBuilder.Entity("MockTestOption", b =>
                 {
-                    b.HasOne("LMS.API.Models.MockTestQuestion", "Question")
+                    b.HasOne("MockTestQuestion", "Question")
                         .WithMany("Options")
                         .HasForeignKey("QuestionId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2210,20 +3214,26 @@ namespace LMS.API.Migrations
                     b.Navigation("Question");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestQuestion", b =>
+            modelBuilder.Entity("MockTestQuestion", b =>
                 {
-                    b.HasOne("LMS.API.Models.MockTest", "MockTest")
+                    b.HasOne("Lesson", "Lesson")
+                        .WithMany()
+                        .HasForeignKey("LessonId");
+
+                    b.HasOne("MockTest", "MockTest")
                         .WithMany("Questions")
                         .HasForeignKey("MockTestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Lesson");
+
                     b.Navigation("MockTest");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Module", b =>
+            modelBuilder.Entity("Module", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
+                    b.HasOne("Course", "Course")
                         .WithMany("Modules")
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2232,10 +3242,21 @@ namespace LMS.API.Migrations
                     b.Navigation("Course");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Order", b =>
+            modelBuilder.Entity("Notification", b =>
                 {
-                    b.HasOne("LMS.API.Models.User", "User")
-                        .WithMany("Orders")
+                    b.HasOne("User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Order", b =>
+                {
+                    b.HasOne("User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -2243,15 +3264,15 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.OrderItem", b =>
+            modelBuilder.Entity("OrderItem", b =>
                 {
-                    b.HasOne("LMS.API.Models.Course", "Course")
-                        .WithMany("OrderItems")
+                    b.HasOne("Course", "Course")
+                        .WithMany()
                         .HasForeignKey("CourseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.Order", "Order")
+                    b.HasOne("Order", "Order")
                         .WithMany("Items")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2262,14 +3283,25 @@ namespace LMS.API.Migrations
                     b.Navigation("Order");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.PaymentTransaction", b =>
+            modelBuilder.Entity("OrgLangSetting", b =>
                 {
-                    b.HasOne("LMS.API.Models.Order", "Order")
+                    b.HasOne("Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("PaymentTransaction", b =>
+                {
+                    b.HasOne("Order", "Order")
                         .WithMany()
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("LMS.API.Models.User", "User")
+                    b.HasOne("User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -2280,20 +3312,20 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Question", b =>
+            modelBuilder.Entity("PayrollRecord", b =>
                 {
-                    b.HasOne("LMS.API.Models.Exam", "Exam")
-                        .WithMany("Questions")
-                        .HasForeignKey("ExamId")
+                    b.HasOne("Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Exam");
+                    b.Navigation("Organization");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.QuestionOption", b =>
+            modelBuilder.Entity("QuestionOption", b =>
                 {
-                    b.HasOne("LMS.API.Models.Question", "Question")
+                    b.HasOne("ExamQuestion", "Question")
                         .WithMany("Options")
                         .HasForeignKey("QuestionId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2302,9 +3334,20 @@ namespace LMS.API.Migrations
                     b.Navigation("Question");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.TopicScore", b =>
+            modelBuilder.Entity("TestCase", b =>
                 {
-                    b.HasOne("LMS.API.Models.MockTestAttempt", "Attempt")
+                    b.HasOne("CodingQuestion", "CodingQuestion")
+                        .WithMany("TestCases")
+                        .HasForeignKey("CodingQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CodingQuestion");
+                });
+
+            modelBuilder.Entity("TopicScore", b =>
+                {
+                    b.HasOne("MockTestAttempt", "Attempt")
                         .WithMany("TopicScores")
                         .HasForeignKey("AttemptId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2313,26 +3356,57 @@ namespace LMS.API.Migrations
                     b.Navigation("Attempt");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.User", b =>
+            modelBuilder.Entity("TrainingBatch", b =>
                 {
-                    b.HasOne("LMS.API.Models.Organization", "Organization")
+                    b.HasOne("Course", "Course")
+                        .WithMany()
+                        .HasForeignKey("CourseId");
+
+                    b.HasOne("User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Lesson", "Lesson")
+                        .WithMany()
+                        .HasForeignKey("LessonId");
+
+                    b.HasOne("Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Course");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Lesson");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("User", b =>
+                {
+                    b.HasOne("Organization", "Organization")
                         .WithMany("Users")
                         .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Organization");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.UserDepartment", b =>
+            modelBuilder.Entity("UserDepartment", b =>
                 {
-                    b.HasOne("LMS.API.Models.Department", "Department")
+                    b.HasOne("Department", "Department")
                         .WithMany("UserDepartments")
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LMS.API.Models.User", "User")
+                    b.HasOne("User", "User")
                         .WithMany("UserDepartments")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2343,9 +3417,9 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.UserRoleAssignment", b =>
+            modelBuilder.Entity("UserRoleAssignment", b =>
                 {
-                    b.HasOne("LMS.API.Models.User", "User")
+                    b.HasOne("User", "User")
                         .WithMany("RoleAssignments")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2354,96 +3428,116 @@ namespace LMS.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Assignment", b =>
+            modelBuilder.Entity("Assignment", b =>
                 {
                     b.Navigation("Submissions");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Category", b =>
+            modelBuilder.Entity("Category", b =>
                 {
                     b.Navigation("Children");
 
                     b.Navigation("Courses");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Course", b =>
+            modelBuilder.Entity("CodingQuestion", b =>
                 {
-                    b.Navigation("CartItems");
+                    b.Navigation("TestCases");
+                });
 
+            modelBuilder.Entity("Course", b =>
+                {
                     b.Navigation("Enrollments");
 
-                    b.Navigation("Exams");
-
                     b.Navigation("Modules");
-
-                    b.Navigation("OrderItems");
 
                     b.Navigation("Ratings");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Department", b =>
+            modelBuilder.Entity("Department", b =>
                 {
                     b.Navigation("Categories");
 
                     b.Navigation("UserDepartments");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Exam", b =>
+            modelBuilder.Entity("Exam", b =>
                 {
                     b.Navigation("Attempts");
 
                     b.Navigation("Questions");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.ExamAttempt", b =>
+            modelBuilder.Entity("ExamAttempt", b =>
                 {
                     b.Navigation("Answers");
-
-                    b.Navigation("Certificate");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Lesson", b =>
+            modelBuilder.Entity("ExamQuestion", b =>
                 {
+                    b.Navigation("Options");
+                });
+
+            modelBuilder.Entity("LangMaster", b =>
+                {
+                    b.Navigation("Translations");
+                });
+
+            modelBuilder.Entity("Lesson", b =>
+                {
+                    b.Navigation("ChildLessons");
+
+                    b.Navigation("Exam");
+
                     b.Navigation("Progresses");
 
                     b.Navigation("Resources");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.LiveClass", b =>
-                {
-                    b.Navigation("Attendees");
-                });
-
-            modelBuilder.Entity("LMS.API.Models.MockTest", b =>
+            modelBuilder.Entity("LessonExam", b =>
                 {
                     b.Navigation("Attempts");
 
                     b.Navigation("Questions");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestAttempt", b =>
+            modelBuilder.Entity("LiveClass", b =>
+                {
+                    b.Navigation("Attendees");
+                });
+
+            modelBuilder.Entity("MockTest", b =>
+                {
+                    b.Navigation("Attempts");
+
+                    b.Navigation("Questions");
+                });
+
+            modelBuilder.Entity("MockTestAttempt", b =>
                 {
                     b.Navigation("Answers");
 
                     b.Navigation("TopicScores");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.MockTestQuestion", b =>
+            modelBuilder.Entity("MockTestQuestion", b =>
                 {
+                    b.Navigation("CodingQuestion");
+
                     b.Navigation("Options");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Module", b =>
+            modelBuilder.Entity("Module", b =>
                 {
                     b.Navigation("Lessons");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Order", b =>
+            modelBuilder.Entity("Order", b =>
                 {
                     b.Navigation("Items");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Organization", b =>
+            modelBuilder.Entity("Organization", b =>
                 {
                     b.Navigation("Categories");
 
@@ -2451,32 +3545,16 @@ namespace LMS.API.Migrations
 
                     b.Navigation("Departments");
 
-                    b.Navigation("HomePageConfig");
-
                     b.Navigation("Users");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.Question", b =>
+            modelBuilder.Entity("TrainingBatch", b =>
                 {
-                    b.Navigation("Answers");
-
-                    b.Navigation("Options");
+                    b.Navigation("Students");
                 });
 
-            modelBuilder.Entity("LMS.API.Models.User", b =>
+            modelBuilder.Entity("User", b =>
                 {
-                    b.Navigation("CartItems");
-
-                    b.Navigation("Certificates");
-
-                    b.Navigation("CoursesOwned");
-
-                    b.Navigation("Enrollments");
-
-                    b.Navigation("ExamAttempts");
-
-                    b.Navigation("Orders");
-
                     b.Navigation("RoleAssignments");
 
                     b.Navigation("UserDepartments");

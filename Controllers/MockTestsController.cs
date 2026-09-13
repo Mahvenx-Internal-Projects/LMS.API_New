@@ -14,11 +14,21 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
     public async Task<IActionResult> GetAll([FromQuery] int? orgId, [FromQuery] int? courseId, [FromQuery] string? status)
     {
         var q = db.MockTests.Include(m => m.CreatedBy).Include(m => m.Course).AsQueryable();
-        if (orgId.HasValue)    q = q.Where(m => m.OrganizationId == orgId.Value);
+        if (orgId.HasValue) q = q.Where(m => m.OrganizationId == orgId.Value);
         if (courseId.HasValue) q = q.Where(m => m.CourseId == courseId.Value);
-        q = !string.IsNullOrEmpty(status) && Enum.TryParse<MockTestStatus>(status, out var st)
-            ? q.Where(m => m.Status == st)
-            : q.Where(m => m.Status == MockTestStatus.Published);
+
+        var isStaff = User.IsInRole("SuperAdmin") || User.IsInRole("OrgAdmin") || User.IsInRole("Instructor");
+
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<MockTestStatus>(status, out var st))
+        {
+            q = q.Where(m => m.Status == st);
+        }
+        else if (!isStaff)
+        {
+            q = q.Where(m => m.Status == MockTestStatus.Published);
+        }
+        // staff with no explicit filter: see ALL statuses, including Draft
+
         var list = await q.Include(m => m.Attempts).OrderByDescending(m => m.CreatedAt).ToListAsync();
         return Ok(list.Select(m => MapTest(m, false)));
     }
@@ -42,12 +52,21 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         if (!Enum.TryParse<MockTestDifficulty>(req.Difficulty, out var diff)) diff = MockTestDifficulty.Mixed;
         var m = new MockTest
         {
-            Title = req.Title, Description = req.Description, Topic = req.Topic,
-            Difficulty = diff, TimeLimitMins = req.TimeLimitMins,
-            TotalQuestions = req.TotalQuestions, PassMarkPercent = req.PassMarkPercent,
-            RandomizeQuestions = req.RandomizeQuestions, ShowResultImmediately = req.ShowResultImmediately,
-            MaxAttempts = req.MaxAttempts, Tags = req.Tags,
-            OrganizationId = req.OrganizationId, CourseId = req.CourseId, CreatedById = req.CreatedById
+            Title = req.Title,
+            Description = req.Description,
+            Topic = req.Topic,
+            Difficulty = diff,
+            TimeLimitMins = req.TimeLimitMins,
+            TotalQuestions = req.TotalQuestions,
+            PassMarkPercent = req.PassMarkPercent,
+            RandomizeQuestions = req.RandomizeQuestions,
+            ShowResultImmediately = req.ShowResultImmediately,
+            MaxAttempts = req.MaxAttempts,
+            Tags = req.Tags,
+            OrganizationId = req.OrganizationId,
+            CourseId = req.CourseId,
+            LessonId = req.LessonId,
+            CreatedById = req.CreatedById
         };
         db.MockTests.Add(m);
         await db.SaveChangesAsync();
@@ -101,11 +120,17 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
 
         var q = new MockTestQuestion
         {
-            Text = req.Text, Topic = req.Topic, Difficulty = diff,
+            Text = req.Text,
+            Topic = req.Topic,
+            Difficulty = diff,
             QuestionType = qType,
-            Marks = req.Marks, NegativeMarks = req.NegativeMarks,
-            Explanation = req.Explanation, ExplanationImageUrl = req.ExplanationImageUrl,
-            ImageUrl = req.ImageUrl, FormulaLatex = req.FormulaLatex,
+            Marks = req.Marks,
+            NegativeMarks = req.NegativeMarks,
+            Explanation = req.Explanation,
+            ExplanationImageUrl = req.ExplanationImageUrl,
+            ImageUrl = req.ImageUrl,
+            FormulaLatex = req.FormulaLatex,
+            LessonId = req.LessonId,   // tag question to specific lesson
             MockTestId = testId,
             DisplayOrder = await db.MockTestQuestions.CountAsync(x => x.MockTestId == testId)
         };
@@ -115,19 +140,31 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         foreach (var (opt, idx) in req.Options.Select((o, i) => (o, i)))
             db.MockTestOptions.Add(new MockTestOption
             {
-                Text = opt.Text, IsCorrect = opt.IsCorrect,
+                Text = opt.Text,
+                IsCorrect = opt.IsCorrect,
                 ImageUrl = opt.ImageUrl,
-                QuestionId = q.Id, DisplayOrder = idx
+                QuestionId = q.Id,
+                DisplayOrder = idx
             });
 
-        // TrueFalse: auto-create True/False options if none provided
         if (qType == MockQuestionType.TrueFalse && !req.Options.Any())
         {
-            db.MockTestOptions.Add(new MockTestOption { Text = "True",  IsCorrect = false, QuestionId = q.Id, DisplayOrder = 0 });
+            db.MockTestOptions.Add(new MockTestOption { Text = "True", IsCorrect = false, QuestionId = q.Id, DisplayOrder = 0 });
             db.MockTestOptions.Add(new MockTestOption { Text = "False", IsCorrect = false, QuestionId = q.Id, DisplayOrder = 1 });
         }
 
         await db.SaveChangesAsync();
+
+        // Keep TotalQuestions in sync with actual question count so Start
+        // never silently returns 0 questions for a test that has some.
+        var test = await db.MockTests.FindAsync(testId);
+        if (test is not null)
+        {
+            var actualCount = await db.MockTestQuestions.CountAsync(x => x.MockTestId == testId);
+            if (test.TotalQuestions < actualCount) test.TotalQuestions = actualCount;
+            await db.SaveChangesAsync();
+        }
+
         return Ok(new { q.Id });
     }
 
@@ -146,17 +183,50 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         q.Explanation = req.Explanation; q.ExplanationImageUrl = req.ExplanationImageUrl;
         q.ImageUrl = req.ImageUrl; q.FormulaLatex = req.FormulaLatex;
 
-        // Replace options
         db.MockTestOptions.RemoveRange(q.Options);
         foreach (var (opt, idx) in req.Options.Select((o, i) => (o, i)))
             db.MockTestOptions.Add(new MockTestOption
             {
-                Text = opt.Text, IsCorrect = opt.IsCorrect,
-                ImageUrl = opt.ImageUrl, QuestionId = q.Id, DisplayOrder = idx
+                Text = opt.Text,
+                IsCorrect = opt.IsCorrect,
+                ImageUrl = opt.ImageUrl,
+                QuestionId = q.Id,
+                DisplayOrder = idx
             });
 
         await db.SaveChangesAsync();
         return NoContent();
+    }
+
+    // GET questions tagged to a specific lesson
+    [HttpGet("questions/by-lesson/{lessonId}")]
+    public async Task<IActionResult> GetQuestionsByLesson(int lessonId)
+    {
+        var questions = await db.MockTestQuestions
+            .Include(q => q.Options)
+            .Where(q => q.LessonId == lessonId && q.IsActive)
+            .OrderBy(q => q.DisplayOrder)
+            .ToListAsync();
+
+        return Ok(questions.Select(q => new {
+            q.Id,
+            q.Text,
+            q.Topic,
+            questionType = q.QuestionType.ToString(),
+            difficulty = q.Difficulty.ToString(),
+            q.Marks,
+            q.NegativeMarks,
+            q.Explanation,
+            q.ImageUrl,
+            q.LessonId,
+            q.MockTestId,
+            options = q.Options.OrderBy(o => o.DisplayOrder).Select(o => new {
+                o.Id,
+                o.Text,
+                o.IsCorrect,
+                o.DisplayOrder
+            })
+        }));
     }
 
     [HttpDelete("questions/{questionId}")]
@@ -178,7 +248,11 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
             .Include(m => m.Questions.OrderBy(q => q.DisplayOrder))
                 .ThenInclude(q => q.Options.OrderBy(o => o.DisplayOrder))
             .FirstOrDefaultAsync(m => m.Id == req.MockTestId && m.Status == MockTestStatus.Published);
+
         if (test is null) return NotFound(new { message = "Test not found or not published" });
+
+        if (!test.Questions.Any())
+            return BadRequest(new { message = "This test has no questions yet. Add questions before starting." });
 
         var prevCount = await db.MockTestAttempts.CountAsync(a => a.MockTestId == req.MockTestId && a.StudentId == req.StudentId);
         if (prevCount >= test.MaxAttempts)
@@ -187,29 +261,36 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         var attempt = new MockTestAttempt
         {
             MockTestId = req.MockTestId,
-            StudentId  = req.StudentId,
+            StudentId = req.StudentId,
             AttemptNumber = prevCount + 1
         };
         db.MockTestAttempts.Add(attempt);
         await db.SaveChangesAsync();
 
+        // Guard against TotalQuestions being 0/unset — fall back to using
+        // all available questions rather than returning an empty test.
+        var takeCount = test.TotalQuestions > 0 ? test.TotalQuestions : test.Questions.Count;
+
         var questions = test.RandomizeQuestions
-            ? test.Questions.OrderBy(_ => Guid.NewGuid()).Take(test.TotalQuestions).ToList()
-            : test.Questions.Take(test.TotalQuestions).ToList();
+            ? test.Questions.OrderBy(_ => Guid.NewGuid()).Take(takeCount).ToList()
+            : test.Questions.Take(takeCount).ToList();
 
         return Ok(new
         {
-            attemptId      = attempt.Id,
-            timeLimitMins  = test.TimeLimitMins,
+            attemptId = attempt.Id,
+            timeLimitMins = test.TimeLimitMins,
             totalQuestions = questions.Count,
-            attemptNumber  = attempt.AttemptNumber,
+            attemptNumber = attempt.AttemptNumber,
             questions = questions.Select(q => new
             {
-                q.Id, q.Text, q.ImageUrl, q.Topic, q.Marks,
+                q.Id,
+                q.Text,
+                q.ImageUrl,
+                q.Topic,
+                q.Marks,
                 q.FormulaLatex,
-                Difficulty   = q.Difficulty.ToString(),
+                Difficulty = q.Difficulty.ToString(),
                 QuestionType = q.QuestionType.ToString(),
-                // Hide IsCorrect from student
                 options = q.Options.Select(o => new { o.Id, o.Text, o.ImageUrl })
             })
         });
@@ -236,9 +317,9 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
         foreach (var q in questions)
         {
             var ans = req.Answers.FirstOrDefault(a => a.QuestionId == q.Id);
-            bool isSkipped  = ans == null;
-            bool isCorrect  = false;
-            int  marks      = 0;
+            bool isSkipped = ans == null;
+            bool isCorrect = false;
+            int marks = 0;
 
             if (!isSkipped)
             {
@@ -247,74 +328,75 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
                     case MockQuestionType.SingleChoice:
                     case MockQuestionType.Dropdown:
                     case MockQuestionType.TrueFalse:
-                    {
-                        var correctOpt = q.Options.FirstOrDefault(o => o.IsCorrect);
-                        isCorrect = correctOpt?.Id == ans!.SelectedOptionId;
-                        if (isCorrect) { marks = q.Marks; earned += q.Marks; }
-                        else { marks = -q.NegativeMarks; negative += q.NegativeMarks; }
-                        break;
-                    }
+                        {
+                            var correctOpt = q.Options.FirstOrDefault(o => o.IsCorrect);
+                            isCorrect = correctOpt?.Id == ans!.SelectedOptionId;
+                            if (isCorrect) { marks = q.Marks; earned += q.Marks; }
+                            else { marks = -q.NegativeMarks; negative += q.NegativeMarks; }
+                            break;
+                        }
                     case MockQuestionType.MultiChoice:
-                    {
-                        // All correct options must be selected, no extras
-                        var correctIds = q.Options.Where(o => o.IsCorrect).Select(o => o.Id).OrderBy(x => x).ToList();
-                        var selectedIds = (ans!.SelectedOptionIds ?? []).OrderBy(x => x).ToList();
-                        isCorrect = correctIds.SequenceEqual(selectedIds);
-                        if (isCorrect) { marks = q.Marks; earned += q.Marks; }
-                        else { marks = -q.NegativeMarks; negative += q.NegativeMarks; }
-                        break;
-                    }
+                        {
+                            var correctIds = q.Options.Where(o => o.IsCorrect).Select(o => o.Id).OrderBy(x => x).ToList();
+                            var selectedIds = (ans!.SelectedOptionIds ?? []).OrderBy(x => x).ToList();
+                            isCorrect = correctIds.SequenceEqual(selectedIds);
+                            if (isCorrect) { marks = q.Marks; earned += q.Marks; }
+                            else { marks = -q.NegativeMarks; negative += q.NegativeMarks; }
+                            break;
+                        }
                     case MockQuestionType.ShortAnswer:
                     case MockQuestionType.Formula:
-                        marks = 0; // Manual grading
+                        marks = 0;
                         isSkipped = true;
                         break;
                 }
             }
 
-            // Build selected option ids string for multi-choice
             string? selectedIdsStr = ans?.SelectedOptionIds?.Count > 0
                 ? string.Join(",", ans.SelectedOptionIds)
                 : null;
 
             db.MockTestAnswers.Add(new MockTestAnswer
             {
-                AttemptId        = attempt.Id,
-                QuestionId       = q.Id,
+                AttemptId = attempt.Id,
+                QuestionId = q.Id,
                 SelectedOptionId = ans?.SelectedOptionId,
                 SelectedOptionIds = selectedIdsStr,
-                TextAnswer       = ans?.TextAnswer,
-                IsCorrect        = isCorrect,
-                IsSkipped        = isSkipped,
-                MarksAwarded     = marks,
+                TextAnswer = ans?.TextAnswer,
+                IsCorrect = isCorrect,
+                IsSkipped = isSkipped,
+                MarksAwarded = marks,
             });
 
-            if (!topicData.ContainsKey(q.Topic)) topicData[q.Topic] = (0, 0);
-            var (t, cor) = topicData[q.Topic];
-            topicData[q.Topic] = (t + 1, cor + (isCorrect ? 1 : 0));
+            var topicKey = q.Topic ?? "General";
+            if (!topicData.ContainsKey(topicKey)) topicData[topicKey] = (0, 0);
+            var (t, cor) = topicData[topicKey];
+            topicData[topicKey] = (t + 1, cor + (isCorrect ? 1 : 0));
         }
 
-        var net          = Math.Max(0, earned - negative);
-        var scorePct     = totalMarks > 0 ? (int)Math.Round(net * 100.0 / totalMarks) : 0;
-        var passed       = scorePct >= attempt.MockTest.PassMarkPercent;
-        var readiness    = scorePct >= 80 ? "Ready" : scorePct >= 60 ? "NeedsPractice" : "Weak";
+        var net = Math.Max(0, earned - negative);
+        var scorePct = totalMarks > 0 ? (int)Math.Round(net * 100.0 / totalMarks) : 0;
+        var passed = scorePct >= attempt.MockTest.PassMarkPercent;
+        var readiness = scorePct >= 80 ? "Ready" : scorePct >= 60 ? "NeedsPractice" : "Weak";
 
-        attempt.CompletedAt        = DateTime.UtcNow;
-        attempt.TimeTakenSecs      = req.TimeTakenSecs;
-        attempt.TotalMarks         = totalMarks;
-        attempt.MarksObtained      = net;
-        attempt.NegativeMarks      = negative;
-        attempt.ScorePercent       = scorePct;
-        attempt.Passed             = passed;
-        attempt.Status             = MockAttemptStatus.Completed;
+        attempt.CompletedAt = DateTime.UtcNow;
+        attempt.TimeTakenSecs = req.TimeTakenSecs;
+        attempt.TotalMarks = totalMarks;
+        attempt.MarksObtained = net;
+        attempt.NegativeMarks = negative;
+        attempt.ScorePercent = scorePct;
+        attempt.Passed = passed;
+        attempt.Status = MockAttemptStatus.Completed;
         attempt.InterviewReadiness = readiness;
 
         foreach (var (topic, (tot, cor)) in topicData)
             db.TopicScores.Add(new TopicScore
             {
-                AttemptId      = attempt.Id, Topic = topic,
-                TotalQuestions = tot, Correct = cor,
-                ScorePercent   = tot > 0 ? (int)Math.Round(cor * 100.0 / tot) : 0
+                AttemptId = attempt.Id,
+                Topic = topic,
+                TotalQuestions = tot,
+                Correct = cor,
+                ScorePercent = tot > 0 ? (int)Math.Round(cor * 100.0 / tot) : 0
             });
 
         await db.SaveChangesAsync();
@@ -389,7 +471,7 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
 
         if (!attempts.Any()) return Ok(new { message = "No completed attempts", studentId });
 
-        var avgScore  = attempts.Average(a => a.ScorePercent);
+        var avgScore = attempts.Average(a => a.ScorePercent);
         var bestScore = attempts.Max(a => a.ScorePercent);
         var readiness = bestScore >= 80 ? "Ready" : bestScore >= 60 ? "NeedsPractice" : "Weak";
 
@@ -426,8 +508,14 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
             .Take(50).ToListAsync();
         return Ok(attempts.Select((a, i) => new
         {
-            rank = i + 1, a.ScorePercent, a.MarksObtained, a.TotalMarks,
-            a.TimeTakenSecs, a.Passed, a.InterviewReadiness, a.CompletedAt,
+            rank = i + 1,
+            a.ScorePercent,
+            a.MarksObtained,
+            a.TotalMarks,
+            a.TimeTakenSecs,
+            a.Passed,
+            a.InterviewReadiness,
+            a.CompletedAt,
             student = new { a.Student.Id, a.Student.FirstName, a.Student.LastName }
         }));
     }
@@ -442,7 +530,8 @@ public class MockTestsController(LmsDbContext db) : ControllerBase
             ? m.Questions.OrderBy(q => q.DisplayOrder).Select(q => new MockTestQuestionDto(
                 q.Id, q.Text, q.ImageUrl, q.Explanation, q.ExplanationImageUrl,
                 q.FormulaLatex, q.Topic, q.Difficulty.ToString(),
-                q.QuestionType.ToString(), q.Marks, q.NegativeMarks, q.DisplayOrder,
+                q.QuestionType.ToString(), q.Marks, q.NegativeMarks, q.DisplayOrder, q.IsActive,
+                q.LessonId,
                 q.Options.OrderBy(o => o.DisplayOrder)
                     .Select(o => new MockTestOptionDto(o.Id, o.Text, o.ImageUrl, o.IsCorrect, o.DisplayOrder)).ToList()
             )).ToList() : null

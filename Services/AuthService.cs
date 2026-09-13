@@ -18,10 +18,15 @@ public class AuthService(IConfiguration config) : IAuthService
 {
     public string GenerateJwt(User user)
     {
-        var key   = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Key"]!));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        // Always include the primary role as the standard ClaimTypes.Role
+        // claim (used by [Authorize(Roles=...)] policy checks throughout
+        // the app). Additionally include every UserRoleAssignment as a
+        // separate "roles" claim so the frontend role-switcher can show
+        // all assigned roles without a separate API call.
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email,          user.Email),
@@ -30,11 +35,19 @@ public class AuthService(IConfiguration config) : IAuthService
             new Claim("fullName",                $"{user.FirstName} {user.LastName}")
         };
 
+        // Add each additional assigned role as a "roles" claim so the
+        // frontend receives the full list in one token, no extra API call.
+        if (user.RoleAssignments != null)
+        {
+            foreach (var ra in user.RoleAssignments)
+                claims.Add(new Claim("roles", ra.Role.ToString()));
+        }
+
         var token = new JwtSecurityToken(
-            issuer:   config["Jwt:Issuer"],
+            issuer: config["Jwt:Issuer"],
             audience: config["Jwt:Audience"],
-            claims:   claims,
-            expires:  DateTime.UtcNow.AddHours(12),
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(12),
             signingCredentials: creds
         );
 
@@ -56,12 +69,12 @@ public class AuthService(IConfiguration config) : IAuthService
             return handler.ValidateToken(token, new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey         = key,
-                ValidateIssuer           = true,
-                ValidIssuer              = config["Jwt:Issuer"],
-                ValidateAudience         = true,
-                ValidAudience            = config["Jwt:Audience"],
-                ClockSkew                = TimeSpan.Zero
+                IssuerSigningKey = key,
+                ValidateIssuer = true,
+                ValidIssuer = config["Jwt:Issuer"],
+                ValidateAudience = true,
+                ValidAudience = config["Jwt:Audience"],
+                ClockSkew = TimeSpan.Zero
             }, out _);
         }
         catch { return null; }

@@ -25,7 +25,8 @@ public record CreateLessonRequest(
     string Title, string? Description,
     string Type, bool IsPreview, bool IsPublished,
     int DisplayOrder, int DurationSecs, int ModuleId,
-    string? VideoUrl, string? FileUrl, string? Content
+    string? VideoUrl, string? FileUrl, string? Content,
+    int? ParentLessonId = null
 );
 
 public record UpdateLessonRequest(
@@ -84,6 +85,7 @@ public class LessonsController(LmsDbContext db) : ControllerBase
             VideoUrl = req.VideoUrl,
             FileUrl = req.FileUrl,
             Content = req.Content,
+            ParentLessonId = req.ParentLessonId,
         };
 
         var blocks = new List<ContentBlock>();
@@ -382,21 +384,6 @@ public class LessonsController(LmsDbContext db) : ControllerBase
         {
             enrollment.Status = EnrollmentStatus.Completed;
             enrollment.CompletedAt = DateTime.UtcNow;
-
-            // Auto-issue certificate on course completion
-            var alreadyHasCert = await db.Certificates
-                .AnyAsync(cert => cert.UserId == userId && cert.CourseId == courseId);
-            if (!alreadyHasCert)
-            {
-                db.Certificates.Add(new Certificate
-                {
-                    UserId = userId,
-                    CourseId = courseId,
-                    IssuedAt = DateTime.UtcNow,
-                    TotalWatchMinutes = enrollment.TotalWatchSeconds / 60,
-                    CertificateNumber = Guid.NewGuid().ToString("N")[..12].ToUpper()
-                });
-            }
         }
         await db.SaveChangesAsync();
     }
