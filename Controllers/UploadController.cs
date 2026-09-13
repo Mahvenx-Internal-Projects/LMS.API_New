@@ -4,11 +4,14 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LMS.API.Controllers;
 
+
+
 public class ImageUploadRequest { public IFormFile File { get; set; } = null!; }
 public class VideoUploadRequest { public IFormFile File { get; set; } = null!; }
 public class FileUploadRequest { public IFormFile File { get; set; } = null!; }
 
 [ApiController, Route("api/upload"), Authorize]
+
 public class UploadController(ICloudflareService cloudflare, ILogger<UploadController> logger) : ControllerBase
 {
     [HttpPost("image")]
